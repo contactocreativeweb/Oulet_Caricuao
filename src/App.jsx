@@ -19,7 +19,8 @@ import {
   X,
   Percent,
   Calculator,
-  Tag
+  Tag,
+  ClipboardList
 } from 'lucide-react'
 
 
@@ -95,7 +96,18 @@ function App() {
       return []
     }
   })
-  const [activeTab, setActiveTab] = useState('inventory') // inventory, sales, installments, calc
+  const [notes, setNotes] = useState(() => {
+    try {
+      const saved = localStorage.getItem('outlet_notes')
+      return saved ? JSON.parse(saved) : []
+    } catch (e) {
+      return []
+    }
+  })
+  const [newNote, setNewNote] = useState({ title: '', text: '' })
+  
+  const [activeTab, setActiveTab] = useState('inventory') // inventory, sales, installments, calc, notes
+
 
   const [calcVal, setCalcVal] = useState('0')
   const [calcHistory, setCalcHistory] = useState('')
@@ -187,6 +199,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('outlet_promotions', JSON.stringify(promotions))
   }, [promotions])
+
+  useEffect(() => {
+    localStorage.setItem('outlet_notes', JSON.stringify(notes))
+  }, [notes])
 
   const fetchRate = async () => {
     try {
@@ -555,6 +571,7 @@ function App() {
           <div className={`tab ${activeTab === 'installments' ? 'active' : ''}`} onClick={() => setActiveTab('installments')}>Cuotas/Pendientes</div>
           <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>Estadísticas</div>
           <div className={`tab ${activeTab === 'calc' ? 'active' : ''}`} onClick={() => setActiveTab('calc')}>Calculadora</div>
+          <div className={`tab ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>Pendientes</div>
         </div>
         <div className="mobile-tabs">
           <select 
@@ -569,6 +586,7 @@ function App() {
             <option value="installments">Cuotas/Pendientes</option>
             <option value="stats">Estadísticas</option>
             <option value="calc">Calculadora</option>
+            <option value="notes">Notas Pendientes</option>
           </select>
         </div>
       </nav>
@@ -1824,6 +1842,77 @@ function App() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'notes' && (
+            <motion.div key="notes" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <div className="grid-layout">
+                <div className="premium-card">
+                  <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Copy size={20} /> Nueva Nota Pendiente
+                  </h3>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!newNote.title || !newNote.text) return;
+                    setNotes([{ id: Date.now().toString(), ...newNote, date: new Date().toISOString() }, ...notes]);
+                    setNewNote({ title: '', text: '' });
+                  }}>
+                    <div className="input-group">
+                      <label>Título</label>
+                      <input 
+                        type="text" 
+                        value={newNote.title} 
+                        onChange={e => setNewNote({...newNote, title: e.target.value})}
+                        placeholder="Ej. Realizar pedido de suéteres..."
+                        required
+                      />
+                    </div>
+                    <div className="input-group" style={{ height: 'auto', minHeight: '120px' }}>
+                      <label>Detalle Pendiente</label>
+                      <textarea 
+                        value={newNote.text} 
+                        onChange={e => setNewNote({...newNote, text: e.target.value})}
+                        placeholder="Escribe la descripción completa aquí..."
+                        rows={4}
+                        style={{ width: '100%', padding: '0.8rem', border: '1px solid var(--glass-border)', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.7)', fontFamily: "'Outfit', sans-serif" }}
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
+                      Guardar Nota
+                    </button>
+                  </form>
+                </div>
+
+                <div className="premium-card">
+                  <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ClipboardList size={20} /> Lista de Pendientes
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {notes.length === 0 ? (
+                      <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No hay notas pendientes actuales.</p>
+                    ) : (
+                      notes.map(note => (
+                        <div key={note.id} style={{ padding: '1.25rem', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <h4 style={{ margin: 0, color: 'var(--accent)', fontSize: '1rem' }}>{note.title}</h4>
+                            <button 
+                              onClick={() => setNotes(notes.filter(n => n.id !== note.id))}
+                              style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0.2rem' }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '0.9rem', color: '#4A3728', whiteSpace: 'pre-wrap' }}>{note.text}</p>
+                          <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{new Date(note.date).toLocaleString()}</small>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </main>
 
