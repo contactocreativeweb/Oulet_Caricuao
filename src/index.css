@@ -148,6 +148,12 @@ input[type=number] {
   margin-bottom: 2.5rem;
 }
 
+.grid-2-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
 .badge {
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
@@ -543,7 +549,8 @@ td {
     gap: 1.5rem;
   }
   
-  .stats-grid {
+  .stats-grid,
+  .grid-2-cols {
     grid-template-columns: 1fr;
     gap: 1rem;
   }

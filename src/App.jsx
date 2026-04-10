@@ -730,7 +730,7 @@ function App() {
                         ))}
                       </select>
                     </div>
-                    <div className="grid-layout" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 0 }}>
+                    <div className="grid-2-cols" style={{ marginTop: 0 }}>
                       <div className="input-group">
                         <label>Si compra (Cantidad)</label>
                         <input type="number" name="minQty" placeholder="Ej. 3" min="1" required />
@@ -830,7 +830,7 @@ function App() {
                   )}
 
                   <form onSubmit={registerSale}>
-                    <div className="grid-layout" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 0 }}>
+                    <div className="grid-2-cols" style={{ marginTop: 0 }}>
                       <div className="input-group">
                         <label>Nombre del Cliente</label>
                         <input 
@@ -863,7 +863,7 @@ function App() {
                     </div>
 
 
-                    <div className="grid-layout" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                    <div className="grid-2-cols" style={{ marginTop: '1rem' }}>
                       <div className="input-group">
                         <label>Teléfono Contacto</label>
                         <input 
@@ -1062,7 +1062,7 @@ function App() {
                     {newSale.paymentMethod === 'SHARED' && (
                       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="premium-card" style={{ background: 'rgba(142, 108, 69, 0.05)', marginBottom: '1rem', border: '1px dashed var(--accent)' }}>
                         <p style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '1rem', color: 'var(--accent)' }}>Desglose de Pago Compartido:</p>
-                        <div className="grid-layout" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 0 }}>
+                        <div className="grid-2-cols" style={{ marginTop: 0 }}>
                           <div className="input-group">
                             <label>Monto en $</label>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1106,7 +1106,7 @@ function App() {
                           </div>
                            <div className="input-group" style={{ gridColumn: '1 / -1' }}>
                              <label>Bolívares / Pago Móvil (Sincronizado)</label>
-                             <div className="grid-layout" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 0 }}>
+                             <div className="grid-2-cols" style={{ marginTop: 0 }}>
                                <div style={{ position: 'relative' }}>
                                  <input 
                                    type="number" 
@@ -1240,7 +1240,7 @@ function App() {
                     )}
 
                     {!resumingSaleId && newSale.status === 'pending' && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid-layout" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 0 }}>
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid-2-cols" style={{ marginTop: 0 }}>
                         <div className="input-group">
                           <label>Cuotas</label>
                           <select 
@@ -2035,7 +2035,7 @@ function App() {
                   <span>#{selectedReceipt.id.slice(-6)}</span>
                 </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                <div className="grid-2-cols" style={{ gap: '0.75rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Cliente:</label>
                     <strong>{selectedReceipt.customerName}</strong>
@@ -2171,7 +2171,7 @@ function App() {
                   </div>
 
                   {/* Customer info grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #f0e8df', borderRadius: '10px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                  <div className="grid-2-cols" style={{ border: '1px solid #f0e8df', borderRadius: '10px', overflow: 'hidden', marginBottom: '1.25rem', gap: 0 }}>
                     {[
                       ['Cliente', s.customerName],
                       ['Cédula', s.customerID || 'N/A'],
