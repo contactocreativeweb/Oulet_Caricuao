@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "ouletcaricuao-867f1"
+  },
+  "targets": {
+    "ouletcaricuao-867f1": {
+      "hosting": {
+        "oulet-caricuao": [
+          "oulet-caricuao"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

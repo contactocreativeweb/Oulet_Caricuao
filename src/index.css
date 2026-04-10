@@ -443,3 +443,64 @@ td {
   font-weight: 700;
   color: var(--success);
 }
+
+/* Receipt & Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .app-container, .tabs, .header, main, nav, .premium-card:not(.receipt-modal) {
+    display: none !important;
+  }
+
+  .modal-overlay {
+    background: white !important;
+    position: static !important;
+    padding: 0 !important;
+  }
+
+  .receipt-modal {
+    box-shadow: none !important;
+    border: none !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+  }
+
+  .receipt-container {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+}
+
+.receipt-modal {
+  overflow-y: auto;
+  max-height: 90vh;
+}
+
+.receipt-divider {
+  border-bottom: 1px dashed #eee;
+  margin: 1rem 0;
+}
+
+.receipt-logo {
+  filter: grayscale(1);
+  opacity: 0.9;
+}
+
+/* Specific button for WhatsApp */
+.btn-whatsapp {
+  background-color: #25D366 !important;
+  color: white !important;
+}

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nota de Entrega – Outlet Caricuao</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #f0ebe3;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 3rem 1rem 6rem;
+    }
+
+    .page {
+      background: white;
+      width: 210mm;
+      padding: 2rem 2.5rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    /* ---- Header ---- */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      border-bottom: 3px solid #8E6C45;
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo-circle {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      border: 3px solid #C2A888;
+    }
+
+    .logo-circle img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .store-info { flex: 1; }
+
+    .store-info h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #8E6C45;
+      letter-spacing: -0.02em;
+    }
+
+    .store-info .ig-qr {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.35rem;
+    }
+
+    .store-info .ig-qr img.qr {
+      width: 52px;
+      height: 52px;
+      border-radius: 4px;
+    }
+
+    .store-info .ig-qr .ig-handle {
+      font-size: 0.72rem;
+      color: #888;
+    }
+
+    .doc-type { text-align: right; }
+
+    .doc-type h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #4A3728;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* ---- Info grid ---- */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid #e8ddd4;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+
+    .info-cell {
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid #f0e8df;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .info-cell:nth-child(odd) { border-right: 1px solid #f0e8df; }
+    .info-cell:nth-last-child(-n+2) { border-bottom: none; }
+
+    .info-cell label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #8E6C45;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      min-width: 72px;
+    }
+
+    .info-cell span {
+      font-size: 0.88rem;
+      color: #4A3728;
+      font-weight: 600;
+    }
+
+    /* ---- Payment box ---- */
+    .payment-box {
+      background: #fdf9f5;
+      border: 1px solid #e8ddd4;
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .payment-item { text-align: center; }
+
+    .payment-item label {
+      display: block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #8E6C45;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 3px;
+    }
+
+    .payment-item span {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #4A3728;
+    }
+
+    .payment-item.highlight span { color: #6B8E23; }
+    .payment-item.warn span { color: #b8740a; }
+
+    .payment-method-tag {
+      grid-column: span 3;
+      text-align: center;
+      padding-top: 0.4rem;
+      border-top: 1px dashed #e0d0c0;
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .payment-method-tag strong { color: #8E6C45; }
+
+    /* Cuotas detail */
+    .cuotas-detail {
+      margin-top: 0.25rem;
+      font-size: 0.7rem;
+      color: #b8740a;
+      font-weight: 600;
+    }
+
+    /* ---- Items table ---- */
+    .section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #8E6C45;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.4rem;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.5rem;
+    }
+
+    .items-table thead tr { background: #8E6C45; }
+
+    .items-table th {
+      padding: 0.55rem 0.85rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: white;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: left;
+    }
+
+    .items-table th:last-child,
+    .items-table td.right { text-align: right; }
+
+    .items-table td {
+      padding: 0.6rem 0.85rem;
+      font-size: 0.88rem;
+      color: #4A3728;
+      border-bottom: 1px solid #f0e8df;
+    }
+
+    .items-table tfoot td {
+      border-bottom: none;
+      border-top: 2px dashed #e0d0c0;
+      padding-top: 0.6rem;
+    }
+
+    .total-row { font-weight: 700; }
+    .total-usd { font-size: 0.95rem; color: #4A3728; }
+    .total-ves { font-size: 0.9rem; color: #8E6C45; }
+    .total-rate { font-size: 0.7rem; color: #bbb; }
+
+    /* ---- Footer ---- */
+    .footer {
+      margin-top: 2rem;
+      border-top: 1px dashed #e0d0c0;
+      padding-top: 0.65rem;
+      text-align: center;
+      font-size: 0.7rem;
+      color: #bbb;
+      letter-spacing: 0.02em;
+    }
+
+    .footer strong { color: #8E6C45; }
+
+    /* Print */
+    @media print {
+      body { background: white; padding: 0; }
+      .page { box-shadow: none; width: 100%; }
+      .no-print { display: none !important; }
+    }
+
+    /* Controls */
+    .controls {
+      position: fixed;
+      top: 1.5rem;
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 999;
+    }
+
+    .ctrl-btn {
+      background: #8E6C45;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 0.6rem 1rem;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(142,108,69,0.3);
+      transition: all 0.2s;
+    }
+
+    .ctrl-btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+    .ctrl-btn.green { background: #25D366; }
+  </style>
+</head>
+<body>
+
+  <!-- Controls -->
+  <div class="controls no-print">
+    <button class="ctrl-btn" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    <button class="ctrl-btn green" onclick="compartirWa()">📲 WhatsApp</button>
+  </div>
+
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="logo-circle">
+        <img src="/logo.jpg" alt="Logo" onerror="this.style.display='none'" />
+      </div>
+
+      <div class="store-info">
+        <h1>OUTLET CARICUAO</h1>
+        <!-- Instagram QR debajo del nombre -->
+        <div class="ig-qr">
+          <img
+            class="qr"
+            src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://www.instagram.com/outlet_caricuao?igsh=ZjB6OWgydTFiNWxk"
+            alt="Instagram QR"
+          />
+          <div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;margin-right:2px">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5" stroke="#C13584" stroke-width="2" fill="none"/>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" stroke="#C13584" stroke-width="2" fill="none"/>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" stroke="#C13584" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+            <span class="ig-handle">@outlet_caricuao</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="doc-type">
+        <h2>Nota de Entrega</h2>
+      </div>
+    </div>
+
+    <!-- Info Grid -->
+    <div class="info-grid">
+      <div class="info-cell">
+        <label>Cliente</label><span>María Rodríguez</span>
+      </div>
+      <div class="info-cell">
+        <label>Nota #</label><span>001234</span>
+      </div>
+      <div class="info-cell">
+        <label>Cédula</label><span>V-12345678</span>
+      </div>
+      <div class="info-cell">
+        <label>Fecha</label><span>10/04/2026</span>
+      </div>
+      <div class="info-cell">
+        <label>Teléfono</label><span>0412-1234567</span>
+      </div>
+      <div class="info-cell">
+        <label>Email</label><span>maria@gmail.com</span>
+      </div>
+    </div>
+
+    <!-- Payment Info Box – muestra TODOS los datos del pago -->
+    <p class="section-title">Detalle de Pago</p>
+    <div class="payment-box">
+      <div class="payment-item highlight">
+        <label>Total USD</label>
+        <span>$30.00</span>
+      </div>
+      <div class="payment-item">
+        <label>Total Bs.</label>
+        <span>Bs. 1,440.00</span>
+      </div>
+      <div class="payment-item">
+        <label>Tasa BCV</label>
+        <span>48.00</span>
+      </div>
+
+      <!-- Ejemplo Pago Compartido (se muestra si aplica) -->
+      <div class="payment-item" style="border-top:1px dashed #e0d0c0;padding-top:0.4rem">
+        <label>Pagado en $</label>
+        <span>$20.00</span>
+      </div>
+      <div class="payment-item" style="border-top:1px dashed #e0d0c0;padding-top:0.4rem">
+        <label>Pagado en Bs.</label>
+        <span>Bs. 480.00</span>
+      </div>
+      <div class="payment-item" style="border-top:1px dashed #e0d0c0;padding-top:0.4rem">
+        <label>Pagado Bs → $</label>
+        <span>$10.00</span>
+      </div>
+
+      <!-- Ejemplo cuotas (se muestra si es pago por partes) -->
+      <div class="payment-method-tag">
+        <strong>Método:</strong> Pago Compartido ($ + Bs.)
+        <div class="cuotas-detail">⏳ Pago por cuotas: Abono inicial $20.00 · 2 cuotas restantes de $5.00</div>
+      </div>
+    </div>
+
+    <!-- Items Table -->
+    <p class="section-title">Artículos Entregados</p>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width:50%">Descripción</th>
+          <th>Cant.</th>
+          <th>Precio Unit.</th>
+          <th>Total USD</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Franela Estampada</td>
+          <td>2</td>
+          <td>$15.00</td>
+          <td class="right">$30.00</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3" style="text-align:right" class="total-row total-usd">Total USD:</td>
+          <td class="total-row total-usd right">$30.00</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="text-align:right" class="total-row total-ves">Total Bs.:</td>
+          <td class="total-row total-ves right">Bs. 1,440.00</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Footer -->
+    <div class="footer">
+      <strong>Outlet Caricuao</strong> · Este documento certifica la entrega del artículo. ·
+      No se aceptan cambios ni devoluciones sin este comprobante.
+    </div>
+
+  </div>
+
+  <script>
+    function compartirWa() {
+      const text = `*Nota de Entrega – Outlet Caricuao*%0A
+----------------------------------%0A
+*Cliente:* María Rodríguez%0A
+*Cédula:* V-12345678%0A
+*Nota #:* 001234  |  *Fecha:* 10/04/2026%0A
+----------------------------------%0A
+*Artículo:* Franela Estampada x2%0A
+*Total USD:* $30.00%0A
+*Total Bs.:* Bs. 1,440.00 (Tasa BCV: 48.00)%0A
+*Método:* Pago Compartido ($ + Bs.)%0A
+*Abono:* $20.00 + Bs.480.00%0A
+*Saldo restante:* $10.00 en 2 cuotas de $5.00%0A
+----------------------------------%0A
+¡Gracias por su compra! 🛍️%0A@outlet_caricuao`
+      window.open(`https://wa.me/?text=${text}`, '_blank')
+    }
+  </script>
+
+</body>
+</html>

@@ -163,6 +163,9 @@ function App() {
   })
   const [showQrModal, setShowQrModal] = useState(false)
   const [showIgModal, setShowIgModal] = useState(false)
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false)
+  const [selectedReceipt, setSelectedReceipt] = useState(null)
 
   const [resumingSaleId, setResumingSaleId] = useState(null)
 
@@ -309,6 +312,9 @@ function App() {
       setSales([...sales, newSaleData])
     }
     
+    setSelectedReceipt(newSaleData)
+    setShowReceiptModal(true)
+    
     setNewSale({ 
       itemId: '', 
       quantity: 1, 
@@ -361,6 +367,28 @@ function App() {
     })
     setResumingSaleId(sale.id)
     setActiveTab('sales')
+  }
+
+  const handlePrint = () => {
+    window.print()
+  }
+
+  const handleWhatsAppShare = (sale) => {
+    const text = `*Recibo de Pago - Outlet Caricuao*%0A
+----------------------------------%0A
+*Cliente:* ${sale.customerName}%0A
+*Cédula:* ${sale.customerID}%0A
+*Fecha:* ${new Date(sale.date).toLocaleDateString()}%0A
+----------------------------------%0A
+*Articulo:* ${sale.itemName}%0A
+*Cantidad:* ${sale.quantity}%0A
+*Total USD:* ${formatCurrency(sale.totalUsd)}%0A
+*Total VES:* ${formatCurrency(sale.totalVes, 'VES')}%0A
+*Tasa:* ${formatCurrency(sale.rate, 'VES')} (${sale.rateType.toUpperCase()})%0A
+----------------------------------%0A
+¡Gracias por tu compra! 🛍️`
+    
+    window.open(`https://wa.me/${sale.customerPhone.replace(/\D/g, '')}?text=${text}`, '_blank')
   }
 
   const deleteInventory = (id) => {
@@ -1335,8 +1363,9 @@ function App() {
                         <th>Total USD</th>
                         <th>Total VES / Pago</th>
                         <th>Estado</th>
-                        <th style={{ width: '40px' }}></th>
+                        <th style={{ width: '80px' }}>Acciones</th>
                       </tr>
+
                     </thead>
                     <tbody>
                       {sales.slice().reverse().map(sale => (
@@ -1365,13 +1394,37 @@ function App() {
                             </span>
                           </td>
                           <td>
-                            <button 
-                              onClick={() => deleteSale(sale.id)}
-                              style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '4px' }}
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button 
+                                onClick={() => {
+                                  setSelectedReceipt(sale)
+                                  setShowReceiptModal(true)
+                                }}
+                                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: '4px' }}
+                                title="Ver Recibo"
+                              >
+                                <QrCode size={18} />
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setSelectedReceipt(sale)
+                                  setShowDeliveryModal(true)
+                                }}
+                                style={{ background: 'none', border: 'none', color: 'var(--primary-glow)', cursor: 'pointer', padding: '4px' }}
+                                title="Nota de Entrega"
+                              >
+                                <Truck size={16} />
+                              </button>
+                              <button 
+                                onClick={() => deleteSale(sale.id)}
+                                style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '4px' }}
+                                title="Eliminar"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </td>
+
                         </tr>
                       ))}
                     </tbody>
@@ -1433,6 +1486,25 @@ function App() {
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
                           Registrado el: {new Date(sale.date).toLocaleString()}
                         </div>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem' }}>
+                          <button 
+                            onClick={() => {
+                              setSelectedReceipt(sale)
+                              setShowReceiptModal(true)
+                            }}
+                            className="btn-secondary" 
+                            style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                          >
+                            <QrCode size={14} /> Recibo
+                          </button>
+                          <button 
+                            onClick={() => handleWhatsAppShare(sale)}
+                            className="btn btn-primary" 
+                            style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem', background: 'var(--success)', border: 'none', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                          >
+                            <Share2 size={14} /> WhatsApp
+                          </button>
+                        </div>
                         <button 
                           onClick={() => resumePendingSale(sale)}
                           className="btn btn-primary" 
@@ -1440,6 +1512,7 @@ function App() {
                         >
                           <History size={16} /> Retomar Cobro / Completar
                         </button>
+
                       </div>
                     ))
                   )}
@@ -1818,6 +1891,304 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showReceiptModal && selectedReceipt && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="modal-overlay no-print"
+          >
+            <motion.div 
+              initial={{ y: 20, opacity: 0 }} 
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              className="premium-card modal-content receipt-modal"
+              style={{ maxWidth: '450px', padding: '0' }}
+            >
+              <div className="receipt-container" id="printable-receipt" style={{ padding: '2rem', background: 'white', color: '#333', borderRadius: '16px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                  <img src="/logo.jpg" alt="Logo" style={{ width: '80px', borderRadius: '50%', marginBottom: '0.5rem' }} />
+                  <h2 style={{ color: '#8E6C45', margin: '0' }}>OUTLET CARICUAO</h2>
+                  <p style={{ margin: '0', fontSize: '0.9rem' }}>Inversiones Caricuao F.P.</p>
+                  <p style={{ fontSize: '0.75rem', opacity: 0.7, margin: '0' }}>RIF: V-24901796-0</p>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem', fontWeight: 'bold' }}>
+                  <span>RECIBO DE PAGO</span>
+                  <span>#{selectedReceipt.id.slice(-6)}</span>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Cliente:</label>
+                    <strong>{selectedReceipt.customerName}</strong>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>ID/Cédula:</label>
+                    <strong>{selectedReceipt.customerID || 'N/A'}</strong>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Fecha:</label>
+                    <strong>{new Date(selectedReceipt.date).toLocaleDateString()}</strong>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Teléfono:</label>
+                    <strong>{selectedReceipt.customerPhone || 'N/A'}</strong>
+                  </div>
+                </div>
+
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem', fontSize: '0.85rem' }}>
+                  <thead style={{ borderBottom: '1px solid #eee' }}>
+                    <tr style={{ textAlign: 'left' }}>
+                      <th style={{ padding: '0.5rem 0' }}>Descripción</th>
+                      <th>Cant.</th>
+                      <th style={{ textAlign: 'right' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '0.5rem 0' }}>{selectedReceipt.itemName}</td>
+                      <td>{selectedReceipt.quantity}</td>
+                      <td style={{ textAlign: 'right' }}>{formatCurrency(selectedReceipt.totalUsd)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div style={{ borderTop: '1px dashed #ccc', paddingTop: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                    <span>Total USD</span>
+                    <strong>{formatCurrency(selectedReceipt.totalUsd)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8E6C45' }}>
+                    <span>Total Bs.</span>
+                    <strong>{formatCurrency(selectedReceipt.totalVes, 'VES')}</strong>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.5rem' }}>
+                    Tasa: {formatCurrency(selectedReceipt.rate, 'VES')} ({selectedReceipt.rateType?.toUpperCase()})
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#666' }}>
+                    Método de Pago: {selectedReceipt.paymentMethod}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '0.8rem', color: '#888' }}>
+                  <p>¡Gracias por tu compra!</p>
+                  <p style={{ fontSize: '0.65rem' }}>No se aceptan cambios ni devoluciones sin el recibo correspondiente.</p>
+                </div>
+              </div>
+
+              <div className="modal-actions no-print" style={{ padding: '1.5rem', display: 'flex', gap: '0.5rem', background: '#fcfcfc', flexWrap: 'wrap' }}>
+                <button onClick={handlePrint} className="btn-secondary" style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  Imprimir / PDF
+                </button>
+                <button 
+                  onClick={() => handleWhatsAppShare(selectedReceipt)} 
+                  className="btn btn-primary" 
+                  style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--success)', border: 'none' }}
+                >
+                  <Share2 size={18} /> WhatsApp
+                </button>
+                <button 
+                  onClick={() => { setShowReceiptModal(false); setShowDeliveryModal(true) }} 
+                  className="btn btn-primary"
+                  style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--accent)', border: 'none' }}
+                >
+                  <Truck size={18} /> Nota de Entrega
+                </button>
+                <button onClick={() => setShowReceiptModal(false)} className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.75rem' }}>
+                  <X size={18} />
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ============ NOTA DE ENTREGA MODAL ============ */}
+      <AnimatePresence>
+        {showDeliveryModal && selectedReceipt && (() => {
+          const s = selectedReceipt
+          const isPending = s.status === 'pending'
+          const isShared = s.paymentMethod === 'SHARED'
+          const isVes = s.paymentMethod === 'VES'
+          const notaNum = String(s.id).slice(-6).toUpperCase()
+          const cuotaRestante = isPending ? (s.totalUsd - s.downPayment) : 0
+          const cuotaValor = isPending ? (cuotaRestante / Math.max(s.installments - s.paidInstallments, 1)) : 0
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="modal-overlay no-print"
+            >
+              <motion.div
+                initial={{ y: 30, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 30, opacity: 0 }}
+                style={{ width: '100%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}
+                id="delivery-note-root"
+              >
+                {/* ─── Printable area ─── */}
+                <div id="printable-delivery" style={{ background: 'white', color: '#333', padding: '2rem 2.5rem', fontFamily: "'Outfit', sans-serif" }}>
+
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', borderBottom: '3px solid #8E6C45', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+                    <img src="/logo.jpg" alt="Logo" style={{ width: '68px', height: '68px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #C2A888', flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8E6C45', letterSpacing: '-0.02em' }}>OUTLET CARICUAO</div>
+                      {/* Instagram QR */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '4px' }}>
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://www.instagram.com/outlet_caricuao?igsh=ZjB6OWgydTFiNWxk')}`}
+                          alt="IG QR"
+                          style={{ width: '46px', height: '46px', borderRadius: '4px' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#aaa' }}>@outlet_caricuao</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#4A3728', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nota de Entrega</div>
+                      <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '4px' }}>#{notaNum}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#999' }}>{new Date(s.date).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+
+                  {/* Customer info grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #f0e8df', borderRadius: '10px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                    {[
+                      ['Cliente', s.customerName],
+                      ['Cédula', s.customerID || 'N/A'],
+                      ['Teléfono', s.customerPhone || 'N/A'],
+                      ['Email', s.customerEmail || 'N/A'],
+                    ].map(([label, val], i) => (
+                      <div key={i} style={{ padding: '0.55rem 1rem', borderBottom: '1px solid #f8f0ea', borderRight: i % 2 === 0 ? '1px solid #f8f0ea' : 'none', display: 'flex', gap: '0.5rem', alignItems: 'center', background: i % 4 < 2 ? '#fdfaf7' : 'white' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: '68px' }}>{label}</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#4A3728' }}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Payment detail box */}
+                  <div style={{ background: '#fdf9f5', border: '1px solid #e8ddd4', borderRadius: '10px', padding: '0.85rem 1rem', marginBottom: '1.25rem' }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.6rem' }}>Detalle de Pago</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', textAlign: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Total USD</div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#4A3728' }}>{formatCurrency(s.totalUsd)}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Total Bs.</div>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#8E6C45' }}>{formatCurrency(s.totalVes, 'VES')}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Tasa {s.rateType?.toUpperCase()}</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#666' }}>{formatCurrency(s.rate, 'VES')}</div>
+                      </div>
+                    </div>
+
+                    {/* Shared payment breakdown */}
+                    {isShared && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', textAlign: 'center', borderTop: '1px dashed #e0d0c0', marginTop: '0.6rem', paddingTop: '0.6rem' }}>
+                        <div>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Pagado en $</div>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#4A3728' }}>{formatCurrency(s.sharedUsd)}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Pagado en Bs.</div>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#8E6C45' }}>{formatCurrency(s.sharedVes, 'VES')}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Bs. → USD</div>
+                          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#666' }}>{formatCurrency(s.sharedVes / s.rate)}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Installments */}
+                    {isPending && (
+                      <div style={{ borderTop: '1px dashed #e0d0c0', marginTop: '0.6rem', paddingTop: '0.6rem', fontSize: '0.8rem', color: '#b8740a', fontWeight: 600, textAlign: 'center' }}>
+                        ⏳ Pago por Partes · Abono: {formatCurrency(s.downPayment)} · Resta: {formatCurrency(cuotaRestante)} en {Math.max(s.installments - s.paidInstallments, 1)} cuota(s) de {formatCurrency(cuotaValor)}
+                      </div>
+                    )}
+
+                    <div style={{ borderTop: '1px dashed #e0d0c0', marginTop: '0.6rem', paddingTop: '0.5rem', fontSize: '0.75rem', color: '#aaa', textAlign: 'center' }}>
+                      <strong style={{ color: '#8E6C45' }}>Método: </strong>
+                      {s.paymentMethod === 'USD' ? 'Dólares en Efectivo' : s.paymentMethod === 'VES' ? 'Bolívares (Pago Móvil / Transferencia)' : s.paymentMethod === 'SHARED' ? 'Pago Compartido ($ + Bs.)' : s.paymentMethod}
+                      {' · '}
+                      <strong style={{ color: s.status === 'paid' ? '#6B8E23' : '#b8740a' }}>
+                        {s.status === 'paid' ? '✔ Cancelado' : '⏳ Pendiente'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Items table */}
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.4rem' }}>Artículos Entregados</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.25rem' }}>
+                    <thead>
+                      <tr style={{ background: '#8E6C45' }}>
+                        {['Descripción', 'Cant.', 'Precio Unit.', 'Total USD'].map(h => (
+                          <th key={h} style={{ padding: '0.5rem 0.8rem', fontSize: '0.7rem', fontWeight: 700, color: 'white', textTransform: 'uppercase', textAlign: h === 'Total USD' ? 'right' : 'left' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem', color: '#4A3728' }}>{s.itemName}</td>
+                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem' }}>{s.quantity}</td>
+                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem' }}>{formatCurrency(s.priceUsd)}</td>
+                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(s.totalUsd)}</td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: 'right', paddingTop: '0.6rem', paddingRight: '0.8rem', fontSize: '0.88rem', fontWeight: 700, color: '#4A3728', borderTop: '2px dashed #e0d0c0' }}>Total USD:</td>
+                        <td style={{ textAlign: 'right', paddingTop: '0.6rem', fontSize: '0.95rem', fontWeight: 800, color: '#4A3728', borderTop: '2px dashed #e0d0c0' }}>{formatCurrency(s.totalUsd)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: 'right', paddingRight: '0.8rem', fontSize: '0.85rem', fontWeight: 700, color: '#8E6C45' }}>Total Bs.:</td>
+                        <td style={{ textAlign: 'right', fontSize: '0.9rem', fontWeight: 800, color: '#8E6C45' }}>{formatCurrency(s.totalVes, 'VES')}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+
+                  {/* Footer */}
+                  <div style={{ borderTop: '1px dashed #e0d0c0', paddingTop: '0.65rem', textAlign: 'center', fontSize: '0.7rem', color: '#bbb' }}>
+                    <strong style={{ color: '#8E6C45' }}>Outlet Caricuao</strong> · Este documento certifica la entrega. · No se aceptan cambios sin este comprobante.
+                  </div>
+                </div>
+
+                {/* ─── Action buttons (no-print) ─── */}
+                <div className="no-print" style={{ background: '#fcfcfc', padding: '1.25rem 1.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', borderTop: '1px solid #f0e8df' }}>
+                  <button
+                    onClick={() => window.print()}
+                    className="btn-secondary"
+                    style={{ flex: 1, minWidth: '130px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    🖨️ Imprimir / PDF
+                  </button>
+                  <button
+                    onClick={() => handleWhatsAppShare(s)}
+                    className="btn btn-primary"
+                    style={{ flex: 1, minWidth: '130px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: '#25D366', border: 'none' }}
+                  >
+                    <Share2 size={18} /> WhatsApp
+                  </button>
+                  <button
+                    onClick={() => setShowDeliveryModal(false)}
+                    className="btn-secondary"
+                    style={{ flex: '0 0 auto', padding: '0.75rem' }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )
+        })()}
+      </AnimatePresence>
+
     </div>
   )
 }
