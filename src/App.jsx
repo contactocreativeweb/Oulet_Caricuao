@@ -18,7 +18,8 @@ import {
   Copy,
   X,
   Percent,
-  Calculator
+  Calculator,
+  Tag
 } from 'lucide-react'
 
 
