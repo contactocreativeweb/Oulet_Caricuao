@@ -40,6 +40,8 @@ import {
   AreaChart,
   Area
 } from 'recharts'
+import { auth, googleProvider } from './firebase'
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import './App.css'
 
 const InstagramIcon = ({ size = 24, ...props }) => (
@@ -63,6 +65,25 @@ const InstagramIcon = ({ size = 24, ...props }) => (
 
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [loadingAuth, setLoadingAuth] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setLoadingAuth(false)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider)
+    } catch (e) {
+      console.error("Login failed", e)
+    }
+  }
+
   const [rate, setRate] = useState(0) // Tasa Binance (Paralelo)
   const [rateBcv, setRateBcv] = useState(0)
   const [rateEuro, setRateEuro] = useState(0)
@@ -320,7 +341,9 @@ function App() {
       installments: Number(newSale.installments),
       paidInstallments: isFullyPaid ? Number(newSale.installments) : (resumingSaleId ? (Number(sale.paidInstallments) + Number(newSale.installmentsToPay)) : 0),
       downPayment: totalAccumulated,
-      date: resumingSaleId ? sale.date : new Date().toISOString()
+      date: resumingSaleId ? sale.date : new Date().toISOString(),
+      sellerName: user?.displayName || 'Vendedor Desconocido',
+      sellerEmail: user?.email || 'N/A'
     }
 
     if (resumingSaleId) {
@@ -403,7 +426,8 @@ function App() {
 *Total VES:* ${formatCurrency(sale.totalVes, 'VES')}%0A
 *Tasa:* ${formatCurrency(sale.rate, 'VES')} (${sale.rateType.toUpperCase()})%0A
 ----------------------------------%0A
-¡Gracias por tu compra! 🛍️`
+¡Gracias por tu compra! 🛍️%0A
+*Atendido por:* ${sale.sellerName || 'Vendedor'}`
     
     window.open(`https://wa.me/${sale.customerPhone.replace(/\D/g, '')}?text=${text}`, '_blank')
   }
@@ -488,6 +512,25 @@ function App() {
     pendingSales: (sales || []).filter(s => s && s.status === 'pending').reduce((acc, s) => acc + ((Number(s.totalUsd) || 0) - (Number(s.downPayment) || 0)), 0)
   }
 
+  if (loadingAuth) {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando sesión...</div>
+  }
+
+  if (!user) {
+    return (
+      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-default)' }}>
+        <div className="premium-card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem', textAlign: 'center' }}>
+          <ShoppingCart size={48} color="var(--primary)" style={{ marginBottom: '1rem', margin: '0 auto' }} />
+          <h2 style={{ color: 'var(--primary)', marginBottom: '0.5rem' }}>Outlet Caricuao</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Punto de Venta Exclusivo para Vendedores</p>
+          <button onClick={handleLogin} className="btn btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+             Ingresar con Google
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app-container">
       <header style={{ marginBottom: '3rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -498,10 +541,15 @@ function App() {
         >
           <img src="/logo.jpg" alt="Outlet Caricuao" style={{ width: '80px', height: '80px', borderRadius: '50%', boxShadow: '0 5px 15px rgba(142, 108, 69, 0.2)' }} />
           <div>
-            <h1 style={{ fontSize: '2.5rem', background: 'linear-gradient(to right, var(--primary-glow), var(--primary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <h1 style={{ fontSize: '2.5rem', background: 'linear-gradient(to right, var(--primary-glow), var(--primary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '0.2rem' }}>
               Outlet Caricuao
             </h1>
-            <p style={{ color: 'var(--text-muted)' }}>Gestión de Inventario & Moda</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <img src={user.photoURL || 'https://via.placeholder.com/20'} alt="Avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold' }}>{user.displayName?.split(' ')[0]}</span>
+              <span style={{ fontSize: '0.8rem', color: '#888' }}>|</span>
+              <button onClick={() => signOut(auth)} style={{ background: 'none', border: 'none', padding: 0, fontSize: '0.8rem', color: 'var(--danger)', cursor: 'pointer', fontWeight: 'bold' }}>Cerrar Sesión</button>
+            </div>
           </div>
           <motion.button
             whileHover={{ scale: 1.1, rotate: 5 }}
@@ -1401,6 +1449,7 @@ function App() {
                     <thead>
                       <tr>
                         <th>Fecha</th>
+                        <th>Vendedor</th>
                         <th>Cliente</th>
                         <th>Prenda</th>
                         <th>Cant.</th>
@@ -1416,6 +1465,9 @@ function App() {
                         <tr key={sale.id}>
                           <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                             {new Date(sale.date).toLocaleDateString()}
+                          </td>
+                          <td style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--accent)' }}>
+                            {sale.sellerName?.split(' ')[0] || 'N/A'}
                           </td>
                           <td style={{ fontWeight: '500' }}>
                             <div>{sale.customerName}</div>
@@ -1853,7 +1905,7 @@ function App() {
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     if (!newNote.title || !newNote.text) return;
-                    setNotes([{ id: Date.now().toString(), ...newNote, date: new Date().toISOString() }, ...notes]);
+                    setNotes([{ id: Date.now().toString(), ...newNote, author: user?.displayName || 'Vendedor', date: new Date().toISOString() }, ...notes]);
                     setNewNote({ title: '', text: '' });
                   }}>
                     <div className="input-group">
@@ -1903,7 +1955,7 @@ function App() {
                             </button>
                           </div>
                           <p style={{ margin: 0, fontSize: '0.9rem', color: '#4A3728', whiteSpace: 'pre-wrap' }}>{note.text}</p>
-                          <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{new Date(note.date).toLocaleString()}</small>
+                          <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>Autor: {note.author || 'Vendedor'} | {new Date(note.date).toLocaleString()}</small>
                         </div>
                       ))
                     )}
@@ -2085,6 +2137,9 @@ function App() {
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#666' }}>
                     Método de Pago: {selectedReceipt.paymentMethod}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                    Atendido por: {selectedReceipt.sellerName || 'Caja Central'}
                   </div>
                 </div>
 
@@ -2270,6 +2325,7 @@ function App() {
 
                   {/* Footer */}
                   <div style={{ borderTop: '1px dashed #e0d0c0', paddingTop: '0.65rem', textAlign: 'center', fontSize: '0.7rem', color: '#bbb' }}>
+                    <div style={{ marginBottom: '0.2rem', color: '#888' }}>Atendido por: {s.sellerName || 'Caja Central'}</div>
                     <strong style={{ color: '#8E6C45' }}>Outlet Caricuao</strong> · Este documento certifica la entrega. · No se aceptan cambios sin este comprobante.
                   </div>
                 </div>
