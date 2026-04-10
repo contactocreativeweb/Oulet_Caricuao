@@ -3,13 +3,13 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // Oulet Caricuao Config provided by user
 const firebaseConfig = {
-  apiKey: "AIzaSyC-MVrv5vQw7VRQsxhPg4PhPRvFaLoYdqs",
-  authDomain: "ouletcaricuao.firebaseapp.com",
-  projectId: "ouletcaricuao",
-  storageBucket: "ouletcaricuao.firebasestorage.app",
-  messagingSenderId: "825852271405",
-  appId: "1:825852271405:web:3c001da7d493bdaa9511a4",
-  measurementId: "G-Y1RKPVQDPH"
+  apiKey: "AIzaSyB2ivERBWLo5idzVfFXzs9S_rPmDGWY8Bs",
+  authDomain: "ouletcaricuao-867f1.firebaseapp.com",
+  projectId: "ouletcaricuao-867f1",
+  storageBucket: "ouletcaricuao-867f1.firebasestorage.app",
+  messagingSenderId: "412590304969",
+  appId: "1:412590304969:web:e1be5aa43ce9945b342718",
+  measurementId: "G-N0CC6YVGE8"
 };
 
 // Initialize Firebase
