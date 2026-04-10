@@ -41,7 +41,7 @@ import {
   Area
 } from 'recharts'
 import { auth, googleProvider } from './firebase'
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
+import { signInWithRedirect, signOut, onAuthStateChanged } from 'firebase/auth'
 import './App.css'
 
 const InstagramIcon = ({ size = 24, ...props }) => (
@@ -78,7 +78,7 @@ function App() {
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider)
+      await signInWithRedirect(auth, googleProvider)
     } catch (e) {
       console.error("Login failed", e)
     }
