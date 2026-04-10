@@ -504,3 +504,125 @@ td {
   background-color: #25D366 !important;
   color: white !important;
 }
+
+/* ========================================================= */
+/* Responsive Design / PWA Mobile Adjustments                */
+/* ========================================================= */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1rem;
+  }
+  
+  .premium-card {
+    padding: 1.25rem;
+  }
+  
+  /* Make header stack vertically if needed */
+  header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+  
+  header > div {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  /* Tabs scrolling on mobile */
+  .tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Grids */
+  .grid-layout {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  /* Calculator adjustments */
+  .calc-grid {
+    gap: 0.5rem;
+  }
+  .calc-btn {
+    height: 50px;
+    font-size: 1.1rem;
+  }
+  
+  /* Table adjustments */
+  .table-container {
+    margin-right: -1.25rem;
+    margin-left: -1.25rem;
+    padding-right: 1.25rem;
+    padding-left: 1.25rem;
+    width: auto;
+    /* Keeps overflow-x: auto from base styles */
+  }
+  
+  table th, table td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.85rem;
+  }
+  
+  /* Payment Receipt / Delivery Modal on Mobile */
+  .modal-content.receipt-modal,
+  #delivery-note-root {
+    max-height: 95vh;
+    border-radius: 12px;
+  }
+  
+  #printable-receipt,
+  #printable-delivery {
+    padding: 1.5rem 1rem !important;
+  }
+  
+  .modal-actions {
+    flex-direction: column;
+    padding: 1rem !important;
+  }
+  .modal-actions button {
+    width: 100%;
+  }
+
+  /* Responsive Tabs */
+  .desktop-tabs {
+    display: none !important;
+  }
+  
+  .mobile-tabs {
+    display: block !important;
+    width: 100%;
+    margin-bottom: 1.5rem;
+  }
+  
+  .tab-select {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border: 2px solid var(--glass-border);
+    border-radius: 12px;
+    background: white;
+    color: var(--accent);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%238E6C45%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1.25rem top 50%;
+    background-size: 0.75rem auto;
+  }
+}
+
+.mobile-tabs {
+  display: none;
+}

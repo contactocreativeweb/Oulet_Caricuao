@@ -545,14 +545,31 @@ function App() {
         </div>
       )}
 
-      <nav className="tabs">
-        <div className={`tab ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')}>Inventario</div>
-        <div className={`tab ${activeTab === 'promos' ? 'active' : ''}`} onClick={() => setActiveTab('promos')}>Promociones</div>
-        <div className={`tab ${activeTab === 'sales' ? 'active' : ''}`} onClick={() => setActiveTab('sales')}>Vender</div>
-        <div className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>Historial</div>
-        <div className={`tab ${activeTab === 'installments' ? 'active' : ''}`} onClick={() => setActiveTab('installments')}>Cuotas/Pendientes</div>
-        <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>Estadísticas</div>
-        <div className={`tab ${activeTab === 'calc' ? 'active' : ''}`} onClick={() => setActiveTab('calc')}>Calculadora</div>
+      <nav className="nav-container">
+        <div className="tabs desktop-tabs">
+          <div className={`tab ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')}>Inventario</div>
+          <div className={`tab ${activeTab === 'promos' ? 'active' : ''}`} onClick={() => setActiveTab('promos')}>Promociones</div>
+          <div className={`tab ${activeTab === 'sales' ? 'active' : ''}`} onClick={() => setActiveTab('sales')}>Vender</div>
+          <div className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>Historial</div>
+          <div className={`tab ${activeTab === 'installments' ? 'active' : ''}`} onClick={() => setActiveTab('installments')}>Cuotas/Pendientes</div>
+          <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>Estadísticas</div>
+          <div className={`tab ${activeTab === 'calc' ? 'active' : ''}`} onClick={() => setActiveTab('calc')}>Calculadora</div>
+        </div>
+        <div className="mobile-tabs">
+          <select 
+            value={activeTab} 
+            onChange={(e) => setActiveTab(e.target.value)} 
+            className="tab-select"
+          >
+            <option value="inventory">Inventario</option>
+            <option value="promos">Promociones</option>
+            <option value="sales">Vender</option>
+            <option value="history">Historial</option>
+            <option value="installments">Cuotas/Pendientes</option>
+            <option value="stats">Estadísticas</option>
+            <option value="calc">Calculadora</option>
+          </select>
+        </div>
       </nav>
 
       <main>
