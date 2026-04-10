@@ -681,12 +681,20 @@ function App() {
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     const formData = new FormData(e.target);
+                    const selectedItemId = formData.get('itemId');
+                    const selectedItem = inventory.find(i => String(i.id) === String(selectedItemId));
+                    
+                    if (!selectedItem) {
+                      alert('Por favor seleccione una prenda válida.');
+                      return;
+                    }
+
                     const minQty = parseInt(formData.get('minQty'));
                     const totalPrice = parseFloat(formData.get('totalPrice'));
                     const newPromo = {
                       id: Date.now().toString(),
-                      itemId: formData.get('itemId'),
-                      itemName: inventory.find(i => i.id === formData.get('itemId')).name,
+                      itemId: selectedItemId,
+                      itemName: selectedItem.name,
                       minQuantity: minQty,
                       promoPrice: totalPrice / minQty,
                       totalPrice: totalPrice
