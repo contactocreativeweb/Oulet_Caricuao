@@ -33,7 +33,6 @@ Este proyecto es una Progressive Web App (PWA) diseñada para optimizar la gesti
 
 ### 4. Administración y Monitoreo
 - **Equipo en Sesión**: Sistema de presencia en tiempo real que muestra quién está logueado.
-- **Privilegios de Admin**: Capacidad para el administrador (**Juan Florez**) de desconectar sesiones activas de otros usuarios si es necesario.
 - **Dashboard de Estadísticas**:
     1. Rentabilidad (Ventas - Gastos)
     2. Gastos Totales
