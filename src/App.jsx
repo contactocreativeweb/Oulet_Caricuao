@@ -233,10 +233,10 @@ function App() {
       const sellers = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(s => {
-          if (s.status === 'offline') return false;
-          if (!s.lastActive) return true;
+          if (s.status !== 'online') return false;
+          if (!s.lastActive) return false;
           const ts = s.lastActive.toDate ? s.lastActive.toDate().getTime() : s.lastActive;
-          return ts > Date.now() - (10 * 60 * 1000); // Solo mostrar activos en los últimos 10 min
+          return ts > Date.now() - (2 * 60 * 1000); // Solo 2 minutos de gracia
         })
         .sort((a, b) => a.id === user.uid ? -1 : (b.id === user.uid ? 1 : 0)) 
       
@@ -841,8 +841,14 @@ function App() {
   const handleLogout = async () => {
     if (user) {
       try {
-        await setDoc(doc(db, 'active_sellers', user.uid), { status: 'offline', lastActive: serverTimestamp() }, { merge: true });
-      } catch (e) {}
+        const sellerRef = doc(db, 'active_sellers', user.uid);
+        await updateDoc(sellerRef, { 
+          status: 'offline', 
+          lastActive: serverTimestamp() 
+        });
+      } catch (e) {
+        console.error("Error setting offline status:", e);
+      }
     }
     signOut(auth);
   };
@@ -946,7 +952,8 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {activeSellers.map((seller) => {
                   const lastTs = seller.lastActive?.toDate ? seller.lastActive.toDate().getTime() : seller.lastActive
-                  const isOnline = !lastTs || (Date.now() - lastTs) < 600000 // 10 mins
+                  const isOnline = lastTs && (Date.now() - lastTs) < 60000 // 1 min para el punto verde
+                  
                   
                   return (
                     <motion.div 
