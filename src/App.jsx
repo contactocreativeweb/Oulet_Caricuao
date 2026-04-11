@@ -98,22 +98,6 @@ function App() {
   const [rateEuro, setRateEuro] = useState(0)
   const [user, setUser] = useState(null)
   const [activeSellers, setActiveSellers] = useState([])
-  const isAdmin = user && (user.displayName?.toLowerCase().includes('juan florez') || user.email === 'contactocreativeweb@gmail.com');
-
-  const disconnectUser = async (sellerId) => {
-    if (!isAdmin) return;
-    try {
-      await updateDoc(doc(db, 'active_sellers', sellerId), {
-        status: 'offline',
-        forceLogout: true,
-        lastActive: serverTimestamp()
-      });
-      setToast({ message: "Usuario desconectado", type: "success" });
-      setTimeout(() => setToast(null), 3000);
-    } catch (err) {
-      console.error("Error disconnecting user:", err);
-    }
-  };
   const [inventory, setInventory] = useState([])
   const [sales, setSales] = useState([])
   const [promotions, setPromotions] = useState([])
@@ -242,14 +226,6 @@ function App() {
     updatePresence()
     const interval = setInterval(updatePresence, 30000)
 
-    // Listener para cierre de sesión forzado
-    const logoutUnsub = onSnapshot(sellerRef, (doc) => {
-      if (doc.exists() && doc.data().forceLogout) {
-        handleLogout();
-        alert("Has sido desconectado por el administrador.");
-      }
-    });
-
     const unsubscribe = onSnapshot(collection(db, 'active_sellers'), (snapshot) => {
       console.log(`[Presence] Docs recibidos: ${snapshot.size}`);
       const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000) 
@@ -274,7 +250,6 @@ function App() {
     return () => {
       clearInterval(interval);
       unsubscribe();
-      logoutUnsub();
     };
   }, [user])
 
@@ -862,7 +837,14 @@ function App() {
     }
   }
 
-  const handleLogout = () => signOut(auth)
+  const handleLogout = async () => {
+    if (user) {
+      try {
+        await setDoc(doc(db, 'active_sellers', user.uid), { status: 'offline', lastActive: serverTimestamp() }, { merge: true });
+      } catch (e) {}
+    }
+    signOut(auth);
+  };
 
   if (loading) return <div className="loading-screen">Cargando Sistema...</div>
 
@@ -1007,17 +989,6 @@ function App() {
                         }}></span>
                       </div>
                       <span>{seller.name} {seller.id === user.uid ? '(Tú)' : ''}</span>
-                      {isAdmin && seller.id !== user.uid && (
-                        <button 
-                          onClick={() => {
-                            if(window.confirm(`¿Desconectar a ${seller.name}?`)) disconnectUser(seller.id)
-                          }}
-                          style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center' }}
-                          title="Desconectar usuario"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
                     </motion.div>
                   )
                 })}
