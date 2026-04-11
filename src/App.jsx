@@ -318,6 +318,7 @@ function App() {
   const [showReceiptModal, setShowReceiptModal] = useState(false)
   const [showDeliveryModal, setShowDeliveryModal] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState(null)
+  const [qrSubtype, setQrSubtype] = useState(null)
 
   const [resumingSaleId, setResumingSaleId] = useState(null)
 
@@ -349,7 +350,11 @@ function App() {
     if (data) setSelectedReceipt(data)
     
     const newState = { tab: activeTab, qr: false, ig: false, receipt: false, delivery: false }
-    if (type === 'qr') { setShowQrModal(true); newState.qr = true; }
+    if (type === 'qr') { 
+      setShowQrModal(true); 
+      setQrSubtype(data); 
+      newState.qr = true; 
+    }
     if (type === 'ig') { setShowIgModal(true); newState.ig = true; }
     if (type === 'receipt') { setShowReceiptModal(true); newState.receipt = true; }
     if (type === 'delivery') { setShowDeliveryModal(true); newState.delivery = true; }
@@ -569,7 +574,7 @@ function App() {
 
     const needsQr = (newSale.paymentMethod === 'VES' || newSale.paymentMethod === 'BINANCE' || (newSale.paymentMethod === 'SHARED' && (Number(newSale.sharedVes) / activeRate) >= 1));
     if (needsQr && !showQrModal) {
-      openModal('qr')
+      openModal('qr', newSale.paymentMethod === 'BINANCE' ? 'binance' : 'ves')
       return
     }
 
@@ -1817,7 +1822,7 @@ function App() {
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                   <button type="button" onClick={() => openModal('qr')} className="btn" style={{ flex: 1, background: '#eb1c24', color: 'white', fontSize: '0.75rem', height: '36px' }}>
+                                   <button type="button" onClick={() => openModal('qr', 'ves')} className="btn" style={{ flex: 1, background: '#eb1c24', color: 'white', fontSize: '0.75rem', height: '36px' }}>
                                       <QrCode size={14} /> QR Pago Móvil
                                    </button>
                                    <button type="button" onClick={copyPaymentData} className="btn" style={{ flex: 1, background: '#eb1c24', color: 'white', fontSize: '0.75rem', height: '36px' }}>
@@ -1849,7 +1854,7 @@ function App() {
                                    />
                                    <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#f3ba2f', fontSize: '0.7rem', fontWeight: 'bold' }}>USDT</div>
                                  </div>
-                                 <button type="button" onClick={() => openModal('qr')} className="btn-icon" style={{ background: '#f3ba2f', color: '#12161c', border: 'none' }} title="Ver QR Binance">
+                                 <button type="button" onClick={() => openModal('qr', 'binance')} className="btn-icon" style={{ background: '#f3ba2f', color: '#12161c', border: 'none' }} title="Ver QR Binance">
                                    <QrCode size={18} />
                                  </button>
                                </div>
@@ -1986,7 +1991,7 @@ function App() {
                             <span>Total a pagar:</span>
                             {((newSale.paymentMethod === 'VES') || (newSale.paymentMethod === 'BINANCE') || (newSale.paymentMethod === 'SHARED' && (Number(newSale.sharedVes) / getActiveRate()) >= 1)) && (
                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                 <button type="button" onClick={() => openModal('qr')} className="btn-icon" title="Ver QR">
+                                 <button type="button" onClick={() => openModal('qr', newSale.paymentMethod === 'BINANCE' ? 'binance' : 'ves')} className="btn-icon" title="Ver QR">
                                    <QrCode size={18} />
                                  </button>
                                  <button type="button" onClick={copyPaymentData} className="btn-icon" title="Copiar Datos">
@@ -2824,10 +2829,10 @@ function App() {
                 <X size={24} />
               </button>
               <h3 style={{ color: '#8E6C45', marginBottom: '1rem' }}>
-                {newSale.paymentMethod === 'BINANCE' ? 'Pago Binance (USDT)' : 'Pago Móvil Banco de Venezuela'}
+                {(qrSubtype === 'binance' || (!qrSubtype && newSale.paymentMethod === 'BINANCE')) ? 'Pago Binance (USDT)' : 'Pago Móvil Banco de Venezuela'}
               </h3>
               <div style={{ background: '#f8f8f8', padding: '1.5rem 1rem', borderRadius: '16px', marginBottom: '1rem' }}>
-                {newSale.paymentMethod === 'BINANCE' ? (
+                {(qrSubtype === 'binance' || (!qrSubtype && newSale.paymentMethod === 'BINANCE')) ? (
                   <>
                     <img 
                       src="https://upload.wikimedia.org/wikipedia/commons/e/e8/Binance_Logo.svg" 
