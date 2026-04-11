@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { 
   Package, 
   ShoppingCart, 
@@ -97,6 +97,8 @@ function App() {
   const [rateBcv, setRateBcv] = useState(0)
   const [rateEuro, setRateEuro] = useState(0)
   const [user, setUser] = useState(null)
+  const isInitialPresence = useRef(true)
+  const prevSellersIds = useRef([])
   const [activeSellers, setActiveSellers] = useState([])
   const [inventory, setInventory] = useState([])
   const [sales, setSales] = useState([])
@@ -240,6 +242,17 @@ function App() {
         })
         .sort((a, b) => a.id === user.uid ? -1 : (b.id === user.uid ? 1 : 0)) 
       
+      // Notificar nuevas conexiones
+      if (!isInitialPresence.current) {
+        sellers.forEach(s => {
+          if (s.id !== user.uid && !prevSellersIds.current.includes(s.id)) {
+            showToast(`👤 ${s.name} se ha conectado`, "info");
+          }
+        });
+      }
+      isInitialPresence.current = false;
+      prevSellersIds.current = sellers.map(s => s.id);
+
       setActiveSellers(sellers)
     }, (error) => {
       console.error("Error en tiempo real (Sellers):", error);
