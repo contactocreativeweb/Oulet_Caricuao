@@ -884,7 +884,7 @@ function App() {
           className="premium-card login-card"
         >
           <img src="/logo.jpg" alt="Logo" className="login-logo" />
-          <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Oulet Caricuao</h2>
+          <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Outlet Caricuao</h2>
           <p className="login-subtitle">Gestión de Inventario y Ventas</p>
 
           <button onClick={handleGoogleLogin} className="google-login-btn">
@@ -2881,7 +2881,7 @@ function App() {
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                 {newSale.paymentMethod === 'VES' && (
                   <a 
-                    href="https://bdvdigital.banvenez.com/pagomovil?id=V21346892&phone=584129734013&bank=0102&description=OuletCaricuao" 
+                    href="https://bdvdigital.banvenez.com/pagomovil?id=V21346892&phone=584129734013&bank=0102&description=OutletCaricuao" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="btn"
