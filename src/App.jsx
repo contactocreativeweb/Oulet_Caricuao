@@ -1189,8 +1189,8 @@ function App() {
                           <th>N Prenda</th>
                           <th>Cant.</th>
                           <th>Precio USD</th>
-                          <th>Precio VES</th>
-                          <th>Registrado por</th>
+                          <th className="mobile-hide">Precio VES</th>
+                          <th className="mobile-hide">Registrado por</th>
                           <th style={{ width: '120px', textAlign: 'center' }}>Acciones</th>
                         </tr>
                       </thead>
@@ -1248,10 +1248,10 @@ function App() {
                                    </td>
                                    <td><span className={`badge ${item.quantity < 5 ? 'badge-danger' : 'badge-success'}`}>{item.quantity}</span></td>
                                    <td>{formatCurrency(item.priceUsd)}</td>
-                                   <td style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
+                                   <td className="mobile-hide" style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
                                      {formatCurrency(item.priceUsd * (inventoryRateType === 'bcv' ? rateBcv : (inventoryRateType === 'euro' ? rateEuro : rate)), 'VES')}
                                    </td>
-                                   <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.author || '-'}</td>
+                                   <td className="mobile-hide" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.author || '-'}</td>
                                    <td style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
                                      <button 
                                        onClick={() => {
@@ -2125,13 +2125,13 @@ function App() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Fecha</th>
+                        <th className="mobile-hide">Fecha</th>
                         <th>Cliente</th>
-                        <th>Prenda</th>
-                        <th>Cant.</th>
+                        <th className="mobile-hide">Prenda</th>
+                        <th className="mobile-hide">Cant.</th>
                         <th>Total USD</th>
                         <th>Total VES / Pago</th>
-                        <th>Vendedor</th>
+                        <th className="mobile-hide">Vendedor</th>
                         <th>Estado</th>
                         <th style={{ width: '80px' }}>Acciones</th>
                       </tr>
@@ -2140,7 +2140,7 @@ function App() {
                     <tbody>
                       {sales.slice().reverse().map(sale => (
                         <tr key={sale.id}>
-                          <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          <td className="mobile-hide" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                             {new Date(sale.date).toLocaleDateString()}
                           </td>
                           <td style={{ fontWeight: '500' }}>
@@ -2149,8 +2149,8 @@ function App() {
                             {sale.customerPhone && <div style={{ fontSize: '0.7rem', color: 'var(--accent)' }}>Tel: {sale.customerPhone}</div>}
                           </td>
 
-                          <td style={{ color: 'var(--text-muted)' }}>{sale.itemName}</td>
-                          <td>{sale.quantity}</td>
+                          <td className="mobile-hide" style={{ color: 'var(--text-muted)' }}>{sale.itemName}</td>
+                          <td className="mobile-hide">{sale.quantity}</td>
                           <td>{formatCurrency(sale.totalUsd)}</td>
                           <td>
                             <div style={{ fontSize: '0.9rem' }}>{formatCurrency(sale.totalVes, 'VES')}</div>
@@ -2158,7 +2158,7 @@ function App() {
                               via {sale.paymentMethod === 'SHARED' ? `$${sale.sharedUsd} + ${sale.sharedVes}` : sale.paymentMethod}
                             </div>
                           </td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sale.sellerName || '-'}</td>
+                          <td className="mobile-hide" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sale.sellerName || '-'}</td>
                           <td>
                             <span className={`badge ${sale.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
                               {sale.status === 'paid' ? 'Pagado' : 'Pendiente'}
@@ -2752,10 +2752,10 @@ function App() {
                       <thead>
                         <tr>
                           <th>Concepto</th>
-                          <th>Fecha</th>
+                          <th className="mobile-hide">Fecha</th>
                           <th>Monto USD</th>
                           <th>Monto VES</th>
-                          <th>Registrado por</th>
+                          <th className="mobile-hide">Registrado por</th>
                           <th style={{ width: '40px' }}></th>
                         </tr>
                       </thead>
@@ -2766,10 +2766,10 @@ function App() {
                           expenses.map(expense => (
                             <tr key={expense.id}>
                               <td style={{ fontWeight: '500' }}>{expense.concept}</td>
-                              <td style={{ fontSize: '0.85rem' }}>{new Date(expense.date).toLocaleDateString()}</td>
+                              <td className="mobile-hide" style={{ fontSize: '0.85rem' }}>{new Date(expense.date).toLocaleDateString()}</td>
                               <td style={{ fontWeight: 'bold' }}>{formatCurrency(expense.amountUsd)}</td>
                               <td style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>{formatCurrency(expense.amountUsd * rateBcv, 'VES')}</td>
-                              <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{expense.author || '-'}</td>
+                              <td className="mobile-hide" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{expense.author || '-'}</td>
                               <td>
                                 <button 
                                   onClick={async () => {

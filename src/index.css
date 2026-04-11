@@ -46,6 +46,12 @@ body {
   padding: 2rem;
 }
 
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1rem 0.75rem;
+  }
+}
+
 h1, h2, h3 {
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -154,11 +160,25 @@ input[type=number] {
   margin-top: 2rem;
 }
 
+@media (max-width: 600px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2.5rem;
+}
+
+@media (max-width: 600px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
 }
 
 .grid-2-cols {
@@ -208,6 +228,16 @@ th {
 td {
   padding: 1rem;
   border-bottom: 1px solid var(--glass-border);
+}
+
+@media (max-width: 768px) {
+  th, td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.85rem;
+  }
+  .mobile-hide {
+    display: none;
+  }
 }
 
 /* Animations */
