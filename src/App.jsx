@@ -98,7 +98,7 @@ function App() {
   const [rateEuro, setRateEuro] = useState(0)
   const [user, setUser] = useState(null)
   const isInitialPresence = useRef(true)
-  const prevSellersIds = useRef([])
+  const prevSellersRef = useRef([]) // Guardamos los objetos completos para tener los nombres
   const [activeSellers, setActiveSellers] = useState([])
   const [inventory, setInventory] = useState([])
   const [sales, setSales] = useState([])
@@ -245,13 +245,20 @@ function App() {
       // Notificar nuevas conexiones
       if (!isInitialPresence.current) {
         sellers.forEach(s => {
-          if (s.id !== user.uid && !prevSellersIds.current.includes(s.id)) {
+          if (s.id !== user.uid && !prevSellersRef.current.find(p => p.id === s.id)) {
             showToast(`👤 ${s.name} se ha conectado`, "info");
+          }
+        });
+
+        // Notificar desconexiones
+        prevSellersRef.current.forEach(p => {
+          if (p.id !== user.uid && !sellers.find(s => s.id === p.id)) {
+            showToast(`🚪 ${p.name} se ha desconectado`, "warning");
           }
         });
       }
       isInitialPresence.current = false;
-      prevSellersIds.current = sellers.map(s => s.id);
+      prevSellersRef.current = sellers;
 
       setActiveSellers(sellers)
     }, (error) => {
