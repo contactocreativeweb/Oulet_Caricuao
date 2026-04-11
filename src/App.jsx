@@ -2874,12 +2874,19 @@ function App() {
                 
                 <hr style={{ margin: '1rem 0', opacity: 0.1 }} />
                 <div style={{ fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: 'var(--primary-glow)', background: 'rgba(142,108,69,0.05)', padding: '1rem', borderRadius: '12px' }}>
-                  Total Cobrar: {newSale.paymentMethod === 'BINANCE' ? formatCurrency(getGrandTotal()) : formatCurrency(newSale.paymentMethod === 'SHARED' ? newSale.sharedVes : getGrandTotal() * getActiveRate(), 'VES')}
-                  {newSale.paymentMethod !== 'BINANCE' && (
-                    <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', fontWeight: '500' }}>
-                      Tasa Aplicada: {(newSale.rateType || 'BCV').toUpperCase()} ({formatCurrency(getActiveRate(), 'VES')})
-                    </div>
-                  )}
+                  Total Cobrar: {
+                    (qrSubtype === 'binance' || (!qrSubtype && newSale.paymentMethod === 'BINANCE'))
+                      ? formatCurrency(newSale.paymentMethod === 'SHARED' ? (newSale.sharedBinance || 0) : getGrandTotal())
+                      : formatCurrency(newSale.paymentMethod === 'SHARED' ? (newSale.sharedVes || 0) : getGrandTotal() * getActiveRate(), 'VES')
+                  }
+                  
+                  <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', fontWeight: '500' }}>
+                    Tasa Aplicada: {
+                      (qrSubtype === 'binance' || (!qrSubtype && newSale.paymentMethod === 'BINANCE'))
+                        ? `BINANCE (${formatCurrency(rate, 'VES')})`
+                        : `${(newSale.rateType || 'BCV').toUpperCase()} (${formatCurrency(getActiveRate(), 'VES')})`
+                    }
+                  </div>
                 </div>
               </div>
               
@@ -2897,7 +2904,14 @@ function App() {
                 )}
                 <button 
                   onClick={() => {
-                    const text = `Pago Móvil Outlet Caricuao:%0A- Tel: 04129734013%0A- CI: 21346892%0A- Banco: 0102 (Venezuela)%0A- Monto: ${formatCurrency(newSale.paymentMethod === 'SHARED' ? newSale.sharedVes : getGrandTotal() * getActiveRate(), 'VES')}`;
+                    const isBinance = (qrSubtype === 'binance' || (!qrSubtype && newSale.paymentMethod === 'BINANCE'));
+                    const amount = isBinance 
+                      ? formatCurrency(newSale.paymentMethod === 'SHARED' ? (newSale.sharedBinance || 0) : getGrandTotal())
+                      : formatCurrency(newSale.paymentMethod === 'SHARED' ? (newSale.sharedVes || 0) : getGrandTotal() * getActiveRate(), 'VES');
+                    
+                    const text = isBinance
+                      ? `Pago Binance Outlet Caricuao:%0A- Binance ID: Maria Diaz0124%0A- Monto: ${amount}`
+                      : `Pago Móvil Outlet Caricuao:%0A- Tel: 04129734013%0A- CI: 21346892%0A- Banco: 0102 (Venezuela)%0A- Monto: ${amount}`;
                     window.open(`https://wa.me/?text=${text}`, '_blank');
                   }}
                   className="btn"
