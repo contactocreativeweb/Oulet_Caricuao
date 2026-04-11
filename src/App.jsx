@@ -233,9 +233,10 @@ function App() {
       const sellers = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(s => {
-          if (!s.lastActive) return true 
-          const ts = s.lastActive.toDate ? s.lastActive.toDate().getTime() : s.lastActive
-          return ts > oneDayAgo
+          if (s.status === 'offline') return false;
+          if (!s.lastActive) return true;
+          const ts = s.lastActive.toDate ? s.lastActive.toDate().getTime() : s.lastActive;
+          return ts > Date.now() - (10 * 60 * 1000); // Solo mostrar activos en los últimos 10 min
         })
         .sort((a, b) => a.id === user.uid ? -1 : (b.id === user.uid ? 1 : 0)) 
       
