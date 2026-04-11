@@ -1,7 +1,7 @@
 {
-  "name": "Outlet Caricuo - Inventario",
-  "short_name": "OutletCaricuo",
-  "description": "Sistema de gestión de inventario para Outlet Caricuo",
+  "name": "Oulet Caricuao - Inventario",
+  "short_name": "OuletCaricuao",
+  "description": "Sistema de gestión de inventario para Oulet Caricuao",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0e14",

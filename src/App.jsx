@@ -20,8 +20,35 @@ import {
   Percent,
   Calculator,
   Tag,
-  ClipboardList
+  ClipboardList,
+  LogOut,
+  LogIn,
+  Mail,
+  Lock,
+  User,
+  TrendingDown,
+  Pencil,
+  Check
 } from 'lucide-react'
+
+import { auth, googleProvider, db } from './firebase'
+import { 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  onAuthStateChanged, 
+  signOut 
+} from 'firebase/auth'
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  onSnapshot, 
+  serverTimestamp, 
+  query, 
+  where,
+  updateDoc
+} from 'firebase/firestore'
 
 
 
@@ -40,8 +67,7 @@ import {
   AreaChart,
   Area
 } from 'recharts'
-import { auth, googleProvider } from './firebase'
-import { signInWithRedirect, signOut, onAuthStateChanged } from 'firebase/auth'
+
 import './App.css'
 
 const InstagramIcon = ({ size = 24, ...props }) => (
@@ -65,68 +91,49 @@ const InstagramIcon = ({ size = 24, ...props }) => (
 
 
 function App() {
-  const [user, setUser] = useState(null)
-  const [loadingAuth, setLoadingAuth] = useState(true)
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser)
-      setLoadingAuth(false)
-    })
-    return () => unsubscribe()
-  }, [])
-
-  const handleLogin = async () => {
-    try {
-      await signInWithRedirect(auth, googleProvider)
-    } catch (e) {
-      console.error("Login failed", e)
-    }
-  }
 
   const [rate, setRate] = useState(0) // Tasa Binance (Paralelo)
   const [rateBcv, setRateBcv] = useState(0)
   const [rateEuro, setRateEuro] = useState(0)
-  const [inventory, setInventory] = useState(() => {
+  const [user, setUser] = useState(null)
+  const [activeSellers, setActiveSellers] = useState([])
+  const isAdmin = user && (user.displayName?.toLowerCase().includes('juan florez') || user.email === 'contactocreativeweb@gmail.com');
+
+  const disconnectUser = async (sellerId) => {
+    if (!isAdmin) return;
     try {
-      const saved = localStorage.getItem('outlet_inventory')
-      const parsed = saved ? JSON.parse(saved) : []
-      return Array.isArray(parsed) ? parsed : []
-    } catch (e) {
-      console.error("Error loading inventory:", e)
-      return []
+      await updateDoc(doc(db, 'active_sellers', sellerId), {
+        status: 'offline',
+        forceLogout: true,
+        lastActive: serverTimestamp()
+      });
+      setToast({ message: "Usuario desconectado", type: "success" });
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      console.error("Error disconnecting user:", err);
     }
-  })
-  const [sales, setSales] = useState(() => {
-    try {
-      const saved = localStorage.getItem('outlet_sales')
-      const parsed = saved ? JSON.parse(saved) : []
-      return Array.isArray(parsed) ? parsed : []
-    } catch (e) {
-      console.error("Error loading sales:", e)
-      return []
-    }
-  })
-  const [promotions, setPromotions] = useState(() => {
-    try {
-      const saved = localStorage.getItem('outlet_promotions')
-      const parsed = saved ? JSON.parse(saved) : []
-      return Array.isArray(parsed) ? parsed : []
-    } catch (e) {
-      console.error("Error loading promotions:", e)
-      return []
-    }
-  })
-  const [notes, setNotes] = useState(() => {
-    try {
-      const saved = localStorage.getItem('outlet_notes')
-      return saved ? JSON.parse(saved) : []
-    } catch (e) {
-      return []
-    }
-  })
+  };
+  const [inventory, setInventory] = useState([])
+  const [sales, setSales] = useState([])
+  const [promotions, setPromotions] = useState([])
+  const [notes, setNotes] = useState([])
   const [newNote, setNewNote] = useState({ title: '', text: '' })
+  const [expenses, setExpenses] = useState([])
+  const [newExpense, setNewExpense] = useState({ concept: '', amountUsd: '' })
   
+  const [toast, setToast] = useState(null)
+  
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 4000)
+  }
+  const [loading, setLoading] = useState(true)
+  const [authMode, setAuthMode] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
   const [activeTab, setActiveTab] = useState('inventory') // inventory, sales, installments, calc, notes
 
 
@@ -171,30 +178,145 @@ function App() {
     setCalcHistory('')
   }
 
-  // Inventory/Sales Form states
+  const btnStyle = (type) => {
+    const base = {
+      padding: '0',
+      borderRadius: '16px',
+      border: 'none',
+      fontSize: '1.5rem',
+      fontWeight: '700',
+      cursor: 'pointer',
+      transition: 'all 0.12s ease',
+      height: '65px',
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    };
+    if (type === 'clear')  return { ...base, background: '#f8d7c4', color: '#8E3E00', fontSize: '1.2rem' };
+    if (type === 'op')     return { ...base, background: 'rgba(142,108,69,0.15)', color: 'var(--primary-glow)' };
+    if (type === 'eq')     return { ...base, background: 'var(--primary-glow)', color: 'white' };
+    return { ...base, background: 'rgba(74,55,40,0.07)', color: 'var(--text)' }; // num
+  };
+
+
   const [newItem, setNewItem] = useState({ name: '', quantity: '', priceUsd: '' })
+  const [editingItemId, setEditingItemId] = useState(null)
+  const [editItemData, setEditItemData] = useState({ name: '', quantity: 0, priceUsd: 0 })
+  const [inventoryRateType, setInventoryRateType] = useState('bcv')
   const [newSale, setNewSale] = useState({ 
-    itemId: '', 
-    quantity: 1, 
-    paymentMethod: 'USD', 
-    status: 'paid', 
-    customerName: '', 
-    installments: 2, 
-    downPayment: '', 
-    paidInstallments: 0, 
-    installmentsToPay: 0, 
-    isManualQuantity: false,
-    sharedUsd: '',
-    sharedVes: '',
-    sharedVesUsd: '',
-    customerID: '',
-    customerIDPrefix: 'V',
-    customerPhone: '',
-    customerEmail: '',
-    rateType: 'bcv' // bcv, euro, binance
-
-
+    itemId: '', quantity: 1, paymentMethod: 'USD', status: 'paid', customerName: '', 
+    installments: 2, downPayment: '', paidInstallments: 0, installmentsToPay: 0,
+    sharedUsd: '', sharedVes: '', sharedVesUsd: '', sharedBinance: '',
+    customerID: '', customerIDPrefix: 'V', customerPhone: '', customerEmail: '',
+    isManualQuantity: false, rateType: 'bcv', cart: []
   })
+
+
+
+  useEffect(() => {
+    if (!user) {
+      setActiveSellers([])
+      return
+    }
+
+    const sellerRef = doc(db, 'active_sellers', user.uid)
+    const updatePresence = async () => {
+      try {
+        await setDoc(sellerRef, {
+          name: user.displayName || user.email.split('@')[0],
+          lastActive: serverTimestamp(),
+          email: user.email,
+          status: 'online',
+          photo: user.photoURL || null
+        }, { merge: true })
+        console.log("Presencia actualizada correctamente");
+      } catch (e) {
+        console.error("Error actualizando presencia:", e)
+        if (e.code === 'permission-denied') {
+          console.error("PERMISOS DENEGADOS: Revisa las reglas de Firestore en la consola de Firebase.");
+        }
+      }
+    }
+
+    updatePresence()
+    const interval = setInterval(updatePresence, 30000)
+
+    // Listener para cierre de sesión forzado
+    const logoutUnsub = onSnapshot(sellerRef, (doc) => {
+      if (doc.exists() && doc.data().forceLogout) {
+        handleLogout();
+        alert("Has sido desconectado por el administrador.");
+      }
+    });
+
+    const unsubscribe = onSnapshot(collection(db, 'active_sellers'), (snapshot) => {
+      console.log(`[Presence] Docs recibidos: ${snapshot.size}`);
+      const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000) 
+      
+      const sellers = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(s => {
+          if (!s.lastActive) return true 
+          const ts = s.lastActive.toDate ? s.lastActive.toDate().getTime() : s.lastActive
+          return ts > oneDayAgo
+        })
+        .sort((a, b) => a.id === user.uid ? -1 : (b.id === user.uid ? 1 : 0)) 
+      
+      setActiveSellers(sellers)
+    }, (error) => {
+      console.error("Error en tiempo real (Sellers):", error);
+      if (error.code === 'permission-denied') {
+        showToast("⚠️ Error de Permisos: No puedes ver a otros vendedores. Revisa tus Reglas de Firestore.", "error");
+      }
+    })
+
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+      logoutUnsub();
+    };
+  }, [user])
+
+  useEffect(() => {
+    // --- FIRESTORE REAL-TIME SYNC ---
+    const collectionsList = ['inventory', 'sales', 'expenses', 'promotions', 'notes']
+    const unsubscritores = collectionsList.map(colName => {
+      let isInitial = true
+      return onSnapshot(collection(db, colName), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        
+        // --- REAL-TIME NOTIFICATIONS ---
+        if (!isInitial) {
+          snapshot.docChanges().forEach(change => {
+            if (change.type === 'added') {
+              const item = change.doc.data()
+              if (item.sellerName && item.sellerName !== (user?.displayName || user?.email?.split('@')[0])) {
+                if (colName === 'sales') showToast(`💸 ${item.sellerName} registró una venta de ${item.itemName}`, 'success')
+                if (colName === 'expenses') showToast(`📉 ${item.sellerName} registró un gasto: ${item.concept}`, 'warning')
+              }
+              if (colName === 'inventory' && item.author && item.author !== (user?.displayName || user?.email?.split('@')[0])) {
+                showToast(`📦 ${item.author} agregó ${item.name} al stock`, 'info')
+              }
+            }
+          })
+        }
+        isInitial = false
+
+        if (colName === 'inventory') setInventory(data)
+        if (colName === 'sales') setSales(data.sort((a,b) => b.id - a.id))
+        if (colName === 'expenses') setExpenses(data.sort((a,b) => b.id - a.id))
+        if (colName === 'promotions') setPromotions(data)
+        if (colName === 'notes') setNotes(data)
+      }, (err) => {
+        console.error(`Error sync ${colName}:`, err)
+      })
+    })
+
+    return () => {
+      unsubscritores.forEach(unsub => unsub())
+    }
+  }, [user])
   const [showQrModal, setShowQrModal] = useState(false)
   const [showIgModal, setShowIgModal] = useState(false)
   const [showReceiptModal, setShowReceiptModal] = useState(false)
@@ -204,9 +326,57 @@ function App() {
   const [resumingSaleId, setResumingSaleId] = useState(null)
 
   useEffect(() => {
+    const handlePopState = (e) => {
+      if (e.state) {
+        if (e.state.tab) setActiveTab(e.state.tab)
+        setShowQrModal(e.state.qr || false)
+        setShowIgModal(e.state.ig || false)
+        setShowReceiptModal(e.state.receipt || false)
+        setShowDeliveryModal(e.state.delivery || false)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    // Estado inicial
+    window.history.replaceState({ tab: activeTab, qr: false, ig: false, receipt: false, delivery: false }, '')
+
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [activeTab]) // Added dependency just in case
+
+  const handleTabChange = (tab) => {
+    if (tab === activeTab) return
+    setActiveTab(tab)
+    window.history.pushState({ tab: tab, qr: false, ig: false, receipt: false, delivery: false }, '')
+  }
+
+  const openModal = (type, data = null) => {
+    if (data) setSelectedReceipt(data)
+    
+    const newState = { tab: activeTab, qr: false, ig: false, receipt: false, delivery: false }
+    if (type === 'qr') { setShowQrModal(true); newState.qr = true; }
+    if (type === 'ig') { setShowIgModal(true); newState.ig = true; }
+    if (type === 'receipt') { setShowReceiptModal(true); newState.receipt = true; }
+    if (type === 'delivery') { setShowDeliveryModal(true); newState.delivery = true; }
+    
+    window.history.pushState(newState, '')
+  }
+
+  const closeModal = () => {
+    window.history.back()
+  }
+
+  useEffect(() => {
     fetchRate()
     const interval = setInterval(fetchRate, 300000) // Update every 5 mins
     return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setLoading(false)
+    })
+    return () => unsubscribe()
   }, [])
 
   useEffect(() => {
@@ -225,195 +395,312 @@ function App() {
     localStorage.setItem('outlet_notes', JSON.stringify(notes))
   }, [notes])
 
+  useEffect(() => {
+    localStorage.setItem('outlet_expenses', JSON.stringify(expenses))
+  }, [expenses])
+
+  const [updatingRates, setUpdatingRates] = useState(false)
+
   const fetchRate = async () => {
+    setUpdatingRates(true)
+    let successCount = 0
     try {
       // Binance (Paralelo)
-      const resBinance = await fetch('https://ve.dolarapi.com/v1/dolares/paralelo')
-      const dataBinance = await resBinance.json()
-      setRate(dataBinance.promedio || dataBinance.price)
+      try {
+        const resBinance = await fetch('https://ve.dolarapi.com/v1/dolares/paralelo')
+        if (resBinance.ok) {
+          const dataBinance = await resBinance.json()
+          setRate(dataBinance.promedio || dataBinance.price)
+          successCount++
+        }
+      } catch (e) { console.error("Error fetching Binance:", e) }
 
       // BCV (Oficial)
-      const resBcv = await fetch('https://ve.dolarapi.com/v1/dolares/oficial')
-      if (resBcv.ok) {
-        const dataBcv = await resBcv.json()
-        setRateBcv(dataBcv.promedio || dataBcv.price)
-      }
+      try {
+        const resBcv = await fetch('https://ve.dolarapi.com/v1/dolares/oficial')
+        if (resBcv.ok) {
+          const dataBcv = await resBcv.json()
+          setRateBcv(dataBcv.promedio || dataBcv.price)
+          successCount++
+        }
+      } catch (e) { console.error("Error fetching BCV:", e) }
 
       // Euro (Oficial)
-      const resEuro = await fetch('https://ve.dolarapi.com/v1/euros/oficial')
-      if (resEuro.ok) {
-        const dataEuro = await resEuro.json()
-        setRateEuro(dataEuro.promedio || dataEuro.price)
+      try {
+        const resEuro = await fetch('https://ve.dolarapi.com/v1/euros/oficial')
+        if (resEuro.ok) {
+          const dataEuro = await resEuro.json()
+          setRateEuro(dataEuro.promedio || dataEuro.price)
+          successCount++
+        }
+      } catch (e) { console.error("Error fetching Euro:", e) }
+
+      if (successCount > 0) {
+        showToast(`Tasas actualizadas (${successCount}/3)`, "success")
+      } else {
+        showToast("No se pudieron obtener las tasas actualizadas", "warning")
       }
     } catch (error) {
-      console.error("Error fetching rates:", error)
-      if(rate === 0) setRate(50.0)
+      console.error("General error fetching rates:", error)
+      showToast("Error de conexión al actualizar tasas", "error")
+    } finally {
+      setUpdatingRates(false)
     }
   }
 
-  const addInventory = (e) => {
+
+  const addInventory = async (e) => {
     e.preventDefault()
     if (!newItem.name || !newItem.quantity || !newItem.priceUsd) return
     
     const existingIndex = inventory.findIndex(i => i.name.toLowerCase() === newItem.name.toLowerCase())
     
-    if (existingIndex >= 0) {
-      const updated = [...inventory]
-      updated[existingIndex].quantity += parseInt(newItem.quantity)
-      updated[existingIndex].priceUsd = parseFloat(newItem.priceUsd)
-      setInventory(updated)
-    } else {
-      setInventory([...inventory, {
-        id: Date.now().toString(),
-        name: newItem.name,
-        quantity: parseInt(newItem.quantity),
-        priceUsd: parseFloat(newItem.priceUsd)
-      }])
+    try {
+      if (existingIndex >= 0) {
+        const existing = inventory[existingIndex]
+        await setDoc(doc(db, 'inventory', existing.id), {
+          ...existing,
+          quantity: existing.quantity + parseInt(newItem.quantity),
+          priceUsd: parseFloat(newItem.priceUsd)
+        }, { merge: true })
+      } else {
+        const id = Date.now().toString()
+        await setDoc(doc(db, 'inventory', id), {
+          name: newItem.name,
+          quantity: parseInt(newItem.quantity),
+          priceUsd: parseFloat(newItem.priceUsd),
+          author: user?.displayName || user?.email?.split('@')[0] || 'Vendedor'
+        })
+      }
+      setNewItem({ name: '', quantity: '', priceUsd: '' })
+    } catch (err) {
+      console.error("Error writing inventory:", err)
     }
-    setNewItem({ name: '', quantity: '', priceUsd: '' })
   }
 
   const getActiveRate = () => {
     if (newSale.rateType === 'bcv') return rateBcv
     if (newSale.rateType === 'euro') return rateEuro
-    return rate // binance
+    return rate
   }
 
-  const registerSale = (e) => {
-    if (e && e.preventDefault) e.preventDefault()
-    if (!newSale.itemId || !newSale.quantity) {
-      setShowQrModal(false)
-      return
-    }
+  const addToCart = () => {
+    if (!newSale.itemId || !newSale.quantity) return
     
     const item = inventory.find(i => i.id === newSale.itemId)
-    if (!resumingSaleId && (!item || item.quantity < newSale.quantity)) {
-      alert(`Solo tengo ${item ? item.quantity : 0} ${item ? item.name : 'artículos'} disponibles. Por favor verifique la cantidad.`)
-      return
-    }
-    
-    const activeRate = getActiveRate();
-    if (((newSale.paymentMethod === 'VES') || (newSale.paymentMethod === 'SHARED' && (Number(newSale.sharedVes) / activeRate) >= 1)) && !showQrModal) {
-      setShowQrModal(true)
+    if (!item || item.quantity < newSale.quantity) {
+      alert("No hay suficiente stock")
       return
     }
 
     const totalUsd = calculateItemTotal(newSale.itemId, newSale.quantity, newSale.paymentMethod)
-    const priceToUse = totalUsd / newSale.quantity
-    const totalVes = totalUsd * activeRate
-    
-    if (!resumingSaleId) {
-      setInventory(inventory.map(i => 
-        i.id === newSale.itemId ? { ...i, quantity: i.quantity - newSale.quantity } : i
-      ))
+    const cartItem = {
+      id: Date.now() + Math.random().toString(),
+      itemId: newSale.itemId,
+      itemName: item.name,
+      quantity: parseInt(newSale.quantity),
+      priceUsd: totalUsd / newSale.quantity,
+      totalUsd
     }
 
-    const sale = resumingSaleId ? sales.find(s => String(s.id) === String(resumingSaleId)) : null
-    
-    const currentMoneyPaid = newSale.paymentMethod === 'SHARED' 
-      ? (Number(newSale.sharedUsd || 0) + (Number(newSale.sharedVes || 0) / activeRate))
-      : (newSale.status === 'pending' ? (Number(newSale.downPayment || 0)) : totalUsd);
+    setNewSale(prev => ({
+      ...prev,
+      cart: [...prev.cart, cartItem],
+      itemId: '',
+      quantity: 1,
+      isManualQuantity: false
+    }))
+  }
 
-    const historicalMoney = resumingSaleId ? (sale.downPayment || 0) : 0;
-    const totalAccumulated = historicalMoney + currentMoneyPaid;
-    const isFullyPaid = totalAccumulated >= (totalUsd - 0.05);
+  const removeFromCart = (id) => {
+    setNewSale(prev => ({
+      ...prev,
+      cart: prev.cart.filter(item => item.id !== id)
+    }))
+  }
+
+  const getGrandTotal = () => {
+    let total = 0;
+    const method = newSale.paymentMethod;
+    const hasVes = (method === 'VES' || (method === 'SHARED' && Number(newSale.sharedVes) > 0));
+
+    // Si hay carrito, iterar y recalcular por si cambiaron de metodo
+    if (newSale.cart.length > 0) {
+      total += newSale.cart.reduce((acc, item) => acc + item.priceUsd * item.quantity, 0); 
+      // Calculamos usando el priceUsd guardado o llamamos calculateItemTotal.
+      // Usar el totalUsd guardado en el carrito es más preciso para no perder promos pre-calculadas:
+      total += newSale.cart.reduce((acc, item) => acc + item.totalUsd, 0) - total; 
+    }
+    
+    // Si hay un item seleccionado, sumarlo a la factura
+    if (newSale.itemId && newSale.quantity > 0) {
+      total += calculateItemTotal(newSale.itemId, newSale.quantity, method, hasVes);
+    }
+    
+    return total;
+  }
+
+  const registerSale = async (e) => {
+    if (e && e.preventDefault) e.preventDefault()
+    
+    let finalCart = newSale.cart.map(c => ({
+      ...c,
+      quantity: c.quantity === '' || c.quantity < 1 ? 1 : c.quantity,
+      // recalcula totalUsd por si estaba erróneo
+      totalUsd: calculateItemTotal(c.itemId, c.quantity === '' || c.quantity < 1 ? 1 : c.quantity, newSale.paymentMethod)
+    }))
+
+    if (newSale.itemId && newSale.quantity > 0) {
+      const item = inventory.find(i => i.id === newSale.itemId)
+      const totalUsd = calculateItemTotal(newSale.itemId, newSale.quantity, newSale.paymentMethod)
+      finalCart.push({
+        id: 'temp-' + Date.now(),
+        itemId: newSale.itemId,
+        itemName: item?.name || 'Prenda',
+        quantity: parseInt(newSale.quantity),
+        priceUsd: totalUsd / newSale.quantity,
+        totalUsd
+      })
+    }
+
+    if (finalCart.length === 0) {
+      alert("Añade al menos un artículo o selecciona una prenda")
+      return
+    }
+    const activeRate = getActiveRate();
+    const totalUsd = finalCart.reduce((acc, i) => acc + i.totalUsd, 0)
+    const totalVes = totalUsd * activeRate
+
+    const needsQr = (newSale.paymentMethod === 'VES' || newSale.paymentMethod === 'BINANCE' || (newSale.paymentMethod === 'SHARED' && (Number(newSale.sharedVes) / activeRate) >= 1));
+    if (needsQr && !showQrModal) {
+      openModal('qr')
+      return
+    }
+
+    const currentMoneyPaid = newSale.paymentMethod === 'SHARED' 
+      ? (Number(newSale.sharedUsd || 0) + (Number(newSale.sharedVes || 0) / activeRate) + Number(newSale.sharedBinance || 0))
+      : (newSale.paymentMethod === 'BINANCE' ? totalUsd : (newSale.status === 'pending' ? (Number(newSale.downPayment || 0)) : totalUsd));
+
+    const isFullyPaid = currentMoneyPaid >= (totalUsd - 0.05);
 
     const newSaleData = {
       id: resumingSaleId || Date.now().toString(),
-      itemId: newSale.itemId,
-      itemName: item.name,
+      items: finalCart,
+      itemName: finalCart.length === 1 ? finalCart[0].itemName : `${finalCart.length} artículos`,
       customerName: newSale.customerName || 'Cliente General',
       customerID: newSale.customerID ? `${newSale.customerIDPrefix}-${newSale.customerID}` : '',
       customerPhone: newSale.customerPhone || '',
       customerEmail: newSale.customerEmail || '',
-
-      quantity: parseInt(newSale.quantity),
-
-      priceUsd: priceToUse,
       totalUsd,
       totalVes,
       rate: activeRate,
       rateType: newSale.rateType,
       paymentMethod: newSale.paymentMethod,
-      sharedUsd: newSale.paymentMethod === 'SHARED' ? Number(newSale.sharedUsd) : (newSale.paymentMethod === 'USD' ? (resumingSaleId ? currentMoneyPaid : totalUsd) : 0),
-      sharedVes: newSale.paymentMethod === 'SHARED' ? Number(newSale.sharedVes) : (newSale.paymentMethod === 'VES' ? (resumingSaleId ? (currentMoneyPaid * activeRate) : totalVes) : 0),
+      sharedUsd: newSale.paymentMethod === 'SHARED' ? Number(newSale.sharedUsd) : (newSale.paymentMethod === 'USD' ? totalUsd : 0),
+      sharedVes: newSale.paymentMethod === 'SHARED' ? Number(newSale.sharedVes) : (newSale.paymentMethod === 'VES' ? totalVes : 0),
+      sharedBinance: newSale.paymentMethod === 'BINANCE' ? totalUsd : (newSale.paymentMethod === 'SHARED' ? Number(newSale.sharedBinance) : 0),
       status: isFullyPaid ? 'paid' : 'pending',
       installments: Number(newSale.installments),
-      paidInstallments: isFullyPaid ? Number(newSale.installments) : (resumingSaleId ? (Number(sale.paidInstallments) + Number(newSale.installmentsToPay)) : 0),
-      downPayment: totalAccumulated,
-      date: resumingSaleId ? sale.date : new Date().toISOString(),
-      sellerName: user?.displayName || 'Vendedor Desconocido',
-      sellerEmail: user?.email || 'N/A'
+      paidInstallments: isFullyPaid ? Number(newSale.installments) : (newSale.status === 'pending' ? 1 : 0),
+      downPayment: currentMoneyPaid,
+      date: new Date().toISOString(),
+      sellerName: user?.displayName || user?.email?.split('@')[0] || 'Vendedor'
     }
 
-    if (resumingSaleId) {
-      setSales(sales.map(s => s.id === resumingSaleId ? newSaleData : s))
-    } else {
-      setSales([...sales, newSaleData])
+    try {
+      await setDoc(doc(db, 'sales', newSaleData.id), newSaleData)
+
+      // Solo descontamos del inventario si es una venta completamente nueva.
+      // Si estamos retomando una pendiente, el stock ya se descontó antes.
+      if (!resumingSaleId) {
+        for (const cartItem of finalCart) {
+          const item = inventory.find(i => i.id === cartItem.itemId)
+          if (item) {
+            await setDoc(doc(db, 'inventory', item.id), {
+              quantity: item.quantity - cartItem.quantity
+            }, { merge: true })
+          }
+        }
+      }
+
+      openModal('receipt', newSaleData)
+      setShowQrModal(false)
+      setResumingSaleId(null) // Resetear el estado de retomar
+      setNewSale({ 
+        itemId: '', quantity: 1, paymentMethod: 'USD', status: 'paid', customerName: '', 
+        installments: 2, downPayment: '', paidInstallments: 0, installmentsToPay: 0,
+        sharedUsd: '', sharedVes: '', sharedVesUsd: '', sharedBinance: '',
+        customerID: '', customerIDPrefix: 'V', customerPhone: '', customerEmail: '',
+        isManualQuantity: false, rateType: 'bcv', cart: []
+      })
+    } catch (err) {
+      console.error("Sale Error:", err)
     }
-    
-    setSelectedReceipt(newSaleData)
-    setShowReceiptModal(true)
-    
-    setNewSale({ 
-      itemId: '', 
-      quantity: 1, 
-      paymentMethod: 'USD', 
-      status: 'paid', 
-      customerName: '', 
-      installments: 2, 
-      downPayment: '', 
-      paidInstallments: 0, 
-      installmentsToPay: 0,
-      sharedUsd: '',
-      sharedVes: '',
-      sharedVesUsd: '',
-      customerID: '',
-      customerIDPrefix: 'V',
-      customerPhone: '',
-      customerEmail: '',
-
-      isManualQuantity: false,
-      rateType: 'bcv'
-
-    })
-    setShowQrModal(false)
-    setResumingSaleId(null)
   }
 
   const resumePendingSale = (sale) => {
-    const item = inventory.find(i => i.id === sale.itemId || i.name === sale.itemName)
-    if (!item) {
-      alert("La prenda original ya no existe en el inventario.")
+    // 1. Recuperar items: nuevos (items) o legacy (itemId)
+    let recoveredItems = []
+    if (sale.items && sale.items.length > 0) {
+      recoveredItems = sale.items
+    } else if (sale.itemId) {
+      recoveredItems = [{
+        id: 'legacy-' + Date.now(),
+        itemId: sale.itemId,
+        itemName: sale.itemName,
+        quantity: sale.quantity,
+        priceUsd: sale.totalUsd / (sale.quantity || 1),
+        totalUsd: sale.totalUsd
+      }]
+    }
+
+    if (recoveredItems.length === 0) {
+      alert("No se pudieron recuperar los artículos de esta venta.")
       return
     }
 
     setNewSale({
-      itemId: item.id,
-      quantity: sale.quantity,
+      itemId: '', 
+      quantity: 1,
       paymentMethod: sale.paymentMethod,
-      status: sale.status,
+      status: 'paid',
       customerName: sale.customerName,
-      customerIDPrefix: sale.customerID?.startsWith('E-') ? 'E' : 'V',
-      customerID: (sale.customerID?.includes('-') ? sale.customerID.split('-')[1] : sale.customerID) || '',
+      customerIDPrefix: sale.customerID?.includes('-') ? sale.customerID.split('-')[0] : 'V',
+      customerID: sale.customerID?.includes('-') ? sale.customerID.split('-')[1] : (sale.customerID || ''),
       customerPhone: sale.customerPhone || '',
       customerEmail: sale.customerEmail || '',
-
-      installments: sale.installments || 2,
-
+      installments: 2,
       downPayment: sale.downPayment || 0,
       paidInstallments: sale.paidInstallments || 0,
-      installmentsToPay: 1
+      installmentsToPay: 1,
+      sharedUsd: sale.sharedUsd || '',
+      sharedVes: sale.sharedVes || '',
+      sharedBinance: sale.sharedBinance || '',
+      rateType: sale.rateType || 'bcv',
+      cart: recoveredItems
     })
     setResumingSaleId(sale.id)
-    setActiveTab('sales')
+    handleTabChange('sales')
   }
 
   const handlePrint = () => {
-    window.print()
+    // delay to ensure rendering in some browsers before print
+    setTimeout(() => {
+      window.print()
+    }, 300)
   }
 
   const handleWhatsAppShare = (sale) => {
+    let breakdown = ''
+    if (sale.paymentMethod === 'SHARED') {
+      breakdown = `%0A*Metodo:* Compartido`
+      if (Number(sale.sharedUsd) > 0) breakdown += `%0A  - Efectivo: ${formatCurrency(sale.sharedUsd)}`
+      if (Number(sale.sharedBinance) > 0) breakdown += `%0A  - Binance: ${formatCurrency(sale.sharedBinance)}`
+      if (Number(sale.sharedVes) > 0) breakdown += `%0A  - Bs: ${formatCurrency(sale.sharedVes, 'VES')}`
+    } else {
+      breakdown = `%0A*Metodo:* ${sale.paymentMethod}`
+    }
+
     const text = `*Recibo de Pago - Outlet Caricuao*%0A
 ----------------------------------%0A
 *Cliente:* ${sale.customerName}%0A
@@ -424,7 +711,7 @@ function App() {
 *Cantidad:* ${sale.quantity}%0A
 *Total USD:* ${formatCurrency(sale.totalUsd)}%0A
 *Total VES:* ${formatCurrency(sale.totalVes, 'VES')}%0A
-*Tasa:* ${formatCurrency(sale.rate, 'VES')} (${sale.rateType.toUpperCase()})%0A
+*Tasa:* ${formatCurrency(sale.rate, 'VES')} (${sale.rateType?.toUpperCase() || 'BCV'})${breakdown}%0A
 ----------------------------------%0A
 ¡Gracias por tu compra! 🛍️%0A
 *Atendido por:* ${sale.sellerName || 'Vendedor'}`
@@ -432,22 +719,49 @@ function App() {
     window.open(`https://wa.me/${sale.customerPhone.replace(/\D/g, '')}?text=${text}`, '_blank')
   }
 
-  const deleteInventory = (id) => {
+  const deleteInventory = async (id) => {
     if (window.confirm("¿Seguro que desea eliminar este item?")) {
-      setInventory(inventory.filter(i => i.id !== id))
+      try {
+        const { deleteDoc } = await import('firebase/firestore')
+        await deleteDoc(doc(db, 'inventory', id))
+      } catch (err) { console.error(err) }
     }
   }
 
-  const deleteSale = (id) => {
+  const updateInventory = async () => {
+    if (!editingItemId) return;
+    try {
+      const { updateDoc } = await import('firebase/firestore')
+      await updateDoc(doc(db, 'inventory', editingItemId), {
+        name: editItemData.name,
+        quantity: parseInt(editItemData.quantity),
+        priceUsd: parseFloat(editItemData.priceUsd)
+      });
+      setEditingItemId(null);
+    } catch (err) { 
+      console.error(err);
+      alert("Error al actualizar el item");
+    }
+  }
+
+  const deleteSale = async (id) => {
     if (window.confirm("¿Seguro que desea eliminar este registro de venta?")) {
-      const sale = sales.find(s => String(s.id) === String(id))
-      // Optional: Restore stock if deleted? Let's do it.
-      if (sale && window.confirm("¿Desea devolver los artículos al inventario?")) {
-        setInventory(inventory.map(i => 
-          i.name === sale.itemName ? { ...i, quantity: i.quantity + sale.quantity } : i
-        ))
-      }
-      setSales(sales.filter(s => s.id !== id))
+      try {
+        const sale = sales.find(s => String(s.id) === String(id))
+        const { deleteDoc } = await import('firebase/firestore')
+        
+        // Devolver stock si así se desea
+        if (sale && window.confirm("¿Desea devolver los artículos al inventario?")) {
+          const item = inventory.find(i => i.name === sale.itemName)
+          if (item) {
+             await setDoc(doc(db, 'inventory', item.id), {
+               quantity: item.quantity + sale.quantity
+             }, { merge: true })
+          }
+        }
+        
+        await deleteDoc(doc(db, 'sales', id))
+      } catch (err) { console.error(err); }
     }
   }
 
@@ -495,66 +809,224 @@ function App() {
 
   const formatCurrency = (val, currency = 'USD') => {
     return currency === 'USD' 
-      ? `$${parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-      : `Bs. ${parseFloat(val).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`
+      ? `$${parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : `${parseFloat(val).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   const copyPaymentData = () => {
-    const data = "Pago Móvil Mercantil: 04142378679, CI: 24901796"
+    const data = "Datos de PagomóvilBDV:\nCédula: V21346892\nTeléfono: 04129734013\nBanco: 0102 - BDV"
     navigator.clipboard.writeText(data)
-    alert("Datos de Pago Móvil copiados al portapapeles")
+    setToast({ message: "Datos copiados al portapapeles", type: "success" })
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  const sharePaymentData = () => {
+    const text = `Datos de PagomóvilBDV:%0A%0ACédula: V21346892%0ATeléfono: 04129734013%0ABanco: 0102 - Banco de Venezuela%0A%0ASi tienes BDVapp haz click aquí -> https://bdvdigital.banvenez.com/pagomovil?id=V21346892&phone=584129734013&bank=0102&description=9dxBliWt4XnVSB0LTqNasQ%3D%3D`;
+    window.open(`https://wa.me/?text=${text}`, '_blank');
   }
 
   const stats = {
     totalItems: (inventory || []).reduce((acc, i) => acc + (Number(i.quantity) || 0), 0),
     inventoryValue: (inventory || []).reduce((acc, i) => acc + ((Number(i.quantity) || 0) * (Number(i.priceUsd) || 0)), 0),
     totalSales: (sales || []).reduce((acc, s) => acc + (s.status === 'paid' ? (Number(s.totalUsd) || 0) : (Number(s.downPayment) || 0)), 0),
-    pendingSales: (sales || []).filter(s => s && s.status === 'pending').reduce((acc, s) => acc + ((Number(s.totalUsd) || 0) - (Number(s.downPayment) || 0)), 0)
+    pendingSales: (sales || []).filter(s => s && s.status === 'pending').reduce((acc, s) => acc + ((Number(s.totalUsd) || 0) - (Number(s.downPayment) || 0)), 0),
+    totalExpenses: (expenses || []).reduce((acc, e) => acc + (Number(e.amountUsd) || 0), 0),
+    pendingSalesCount: (sales || []).filter(s => s && s.status === 'pending').length,
+    notesCount: (notes || []).length,
+    promosCount: (promotions || []).length
+  }
+  stats.profitability = stats.totalSales - stats.totalExpenses;
+
+  const handleGoogleLogin = async () => {
+    try {
+      setError('')
+      await signInWithPopup(auth, googleProvider)
+    } catch (err) {
+      console.error(err)
+      setError('Error al iniciar sesión con Google')
+    }
   }
 
-  if (loadingAuth) {
-    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando sesión...</div>
+  const handleEmailAuth = async (e) => {
+    e.preventDefault()
+    setError('')
+    try {
+      if (authMode === 'login') {
+        await signInWithEmailAndPassword(auth, email, password)
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password)
+      }
+    } catch (err) {
+      console.error(err)
+      setError(authMode === 'login' ? 'Correo o contraseña incorrectos' : 'Error al crear la cuenta. Verifica los datos.')
+    }
   }
+
+  const handleLogout = () => signOut(auth)
+
+  if (loading) return <div className="loading-screen">Cargando Sistema...</div>
 
   if (!user) {
     return (
-      <div className="app-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-default)' }}>
-        <div className="premium-card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem', textAlign: 'center' }}>
-          <ShoppingCart size={48} color="var(--primary)" style={{ marginBottom: '1rem', margin: '0 auto' }} />
-          <h2 style={{ color: 'var(--primary)', marginBottom: '0.5rem' }}>Outlet Caricuao</h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Punto de Venta Exclusivo para Vendedores</p>
-          <button onClick={handleLogin} className="btn btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
-             Ingresar con Google
+      <div className="login-container">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }} 
+          animate={{ opacity: 1, scale: 1 }}
+          className="premium-card login-card"
+        >
+          <img src="/logo.jpg" alt="Logo" className="login-logo" />
+          <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Oulet Caricuao</h2>
+          <p className="login-subtitle">Gestión de Inventario y Ventas</p>
+
+          <button onClick={handleGoogleLogin} className="google-login-btn">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" />
+            Acceso con Gmail
           </button>
-        </div>
+
+          <div className="auth-divider">
+            <span>o usa tu correo</span>
+          </div>
+
+          <form onSubmit={handleEmailAuth} className="login-form">
+            <div className="input-group">
+              <label><Mail size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Correo Electrónico</label>
+              <input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                placeholder="ejemplo@correo.com"
+                required 
+              />
+            </div>
+            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+              <label><Lock size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Contraseña</label>
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                placeholder="••••••••"
+                required 
+              />
+            </div>
+            
+            {error && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="error-message">{error}</motion.p>}
+
+            <button type="submit" className="btn btn-primary login-btn">
+              {authMode === 'login' ? <><LogIn size={20} /> Entrar al Sistema</> : <><User size={20} /> Crear mi Cuenta</>}
+            </button>
+          </form>
+
+          <button 
+            onClick={() => {
+              setAuthMode(authMode === 'login' ? 'register' : 'login')
+              setError('')
+            }}
+            className="toggle-auth-btn"
+          >
+            {authMode === 'login' ? '¿No tienes cuenta? Regístrate aquí' : '¿Ya tienes cuenta? Inicia sesión'}
+          </button>
+        </motion.div>
       </div>
     )
   }
-
   return (
     <div className="app-container">
       <header style={{ marginBottom: '3rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <motion.div 
           initial={{ x: -20, opacity: 0 }} 
           animate={{ x: 0, opacity: 1 }}
+          className="header-left"
           style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}
         >
-          <img src="/logo.jpg" alt="Outlet Caricuao" style={{ width: '80px', height: '80px', borderRadius: '50%', boxShadow: '0 5px 15px rgba(142, 108, 69, 0.2)' }} />
-          <div>
+          <div 
+            onClick={() => window.location.reload()} 
+            style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', cursor: 'pointer' }}
+            title="Actualizar Aplicación"
+          >
+            <motion.img 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              src="/logo.jpg" 
+              alt="Outlet Caricuao" 
+              style={{ width: '80px', height: '80px', borderRadius: '50%', boxShadow: '0 5px 15px rgba(142, 108, 69, 0.2)' }} 
+            />
             <h1 style={{ fontSize: '2.5rem', background: 'linear-gradient(to right, var(--primary-glow), var(--primary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '0.2rem' }}>
               Outlet Caricuao
             </h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <img src={user.photoURL || 'https://via.placeholder.com/20'} alt="Avatar" style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-dark)', fontWeight: 'bold' }}>{user.displayName?.split(' ')[0]}</span>
-              <span style={{ fontSize: '0.8rem', color: '#888' }}>|</span>
-              <button onClick={() => signOut(auth)} style={{ background: 'none', border: 'none', padding: 0, fontSize: '0.8rem', color: 'var(--danger)', cursor: 'pointer', fontWeight: 'bold' }}>Cerrar Sesión</button>
+          </div>
+            <div className="team-presence" style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '3px solid var(--primary-glow)', paddingLeft: '1rem' }}>
+              <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: '800', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Equipo en Sesión
+                {activeSellers.length > 1 && <span style={{ background: 'var(--success)', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '0.6rem' }}>{activeSellers.length}</span>}
+              </p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {activeSellers.map((seller) => {
+                  const lastTs = seller.lastActive?.toDate ? seller.lastActive.toDate().getTime() : seller.lastActive
+                  const isOnline = !lastTs || (Date.now() - lastTs) < 600000 // 10 mins
+                  
+                  return (
+                    <motion.div 
+                      layout
+                      key={seller.id} 
+                      style={{ 
+                        fontSize: '0.9rem', 
+                        color: 'var(--primary-glow)', 
+                        fontWeight: '700', 
+                        margin: 0, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        background: 'rgba(142, 108, 69, 0.08)',
+                        padding: '6px 10px',
+                        borderRadius: '10px',
+                        width: 'fit-content',
+                        border: seller.id === user.uid ? '1px solid rgba(142, 108, 69, 0.2)' : '1px solid transparent',
+                        opacity: isOnline ? 1 : 0.6
+                      }}
+                    >
+                      <div style={{ position: 'relative', display: 'flex' }}>
+                        {seller.photo ? (
+                          <img src={seller.photo} alt={seller.name} style={{ width: '24px', height: '24px', borderRadius: '50%', border: isOnline ? '1.5px solid var(--primary)' : '1.5px solid #666' }} />
+                        ) : (
+                          <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: isOnline ? 'var(--primary)' : '#555', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>
+                            {seller.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span style={{ 
+                          position: 'absolute',
+                          bottom: '-2px',
+                          right: '-2px',
+                          width: '8px', 
+                          height: '8px', 
+                          borderRadius: '50%', 
+                          background: isOnline ? '#4CAF50' : '#888', 
+                          border: '2px solid var(--card-bg)',
+                          boxShadow: isOnline ? '0 0 5px #4CAF50' : 'none',
+                          animation: isOnline ? 'pulse 2s infinite' : 'none' 
+                        }}></span>
+                      </div>
+                      <span>{seller.name} {seller.id === user.uid ? '(Tú)' : ''}</span>
+                      {isAdmin && seller.id !== user.uid && (
+                        <button 
+                          onClick={() => {
+                            if(window.confirm(`¿Desconectar a ${seller.name}?`)) disconnectUser(seller.id)
+                          }}
+                          style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center' }}
+                          title="Desconectar usuario"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </motion.div>
+                  )
+                })}
             </div>
           </div>
           <motion.button
             whileHover={{ scale: 1.1, rotate: 5 }}
             whileTap={{ scale: 0.9 }}
-            onClick={() => setShowIgModal(true)}
+            onClick={() => openModal('ig')}
             style={{
               background: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)',
               border: 'none',
@@ -572,69 +1044,63 @@ function App() {
             title="Instagram Store"
           >
             <InstagramIcon size={24} />
-
           </motion.button>
+
+          <div style={{ marginLeft: '1rem', borderLeft: '1px solid var(--border)', paddingLeft: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {user.photoURL && <img src={user.photoURL} alt="User" style={{ width: '32px', height: '32px', borderRadius: '50%', border: '2px solid var(--primary)' }} />}
+            <button onClick={handleLogout} className="logout-btn" title="Cerrar Sesión">
+              <LogOut size={18} />
+              <span className="desktop-only">Salir</span>
+            </button>
+          </div>
         </motion.div>
 
         
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="premium-card" style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '2px solid var(--success)' }}>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tasa BCV</p>
-              <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--success)' }}>{formatCurrency(rateBcv, 'VES')}</p>
-            </div>
+        <div className="rates-header" style={{ display: 'flex', gap: '0.75rem' }}>
+          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="premium-card" style={{ padding: '0.75rem 1.25rem', borderBottom: '2px solid var(--success)', textAlign: 'center' }}>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tasa BCV</p>
+            <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--success)' }}>{parseFloat(rateBcv).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </motion.div>
 
-          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.1 }} className="premium-card" style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '2px solid var(--primary)' }}>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tasa Euro</p>
-              <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--primary)' }}>{formatCurrency(rateEuro, 'VES')}</p>
-            </div>
+          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.1 }} className="premium-card" style={{ padding: '0.75rem 1.25rem', borderBottom: '2px solid var(--primary)', textAlign: 'center' }}>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tasa Euro</p>
+            <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--primary)' }}>{parseFloat(rateEuro).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </motion.div>
 
-          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="premium-card" style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '2px solid var(--accent)' }}>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tasa Binance</p>
-              <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--accent)' }}>{formatCurrency(rate, 'VES')}</p>
-            </div>
+          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="premium-card" style={{ padding: '0.75rem 1.25rem', borderBottom: '2px solid var(--accent)', textAlign: 'center' }}>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tasa Binance</p>
+            <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--accent)' }}>{parseFloat(rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </motion.div>
         </div>
       </header>
 
-      {activeTab !== 'sales' && (
-        <div className="stats-grid">
-          <StatCard title="Total Prendas" value={stats.totalItems} icon={<Package size={20} />} />
-          <StatCard title="Valor Inventario" value={formatCurrency(stats.inventoryValue)} icon={<DollarSign size={20} />} color="var(--primary)" />
-          <StatCard title="Ventas Totales" value={formatCurrency(stats.totalSales)} icon={<ShoppingCart size={20} />} color="var(--success)" />
-          <StatCard title="Por Cobrar" value={formatCurrency(stats.pendingSales)} icon={<CreditCard size={20} />} color="var(--warning)" />
-        </div>
-      )}
-
       <nav className="nav-container">
         <div className="tabs desktop-tabs">
-          <div className={`tab ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')}>Inventario</div>
-          <div className={`tab ${activeTab === 'promos' ? 'active' : ''}`} onClick={() => setActiveTab('promos')}>Promociones</div>
-          <div className={`tab ${activeTab === 'sales' ? 'active' : ''}`} onClick={() => setActiveTab('sales')}>Vender</div>
-          <div className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>Historial</div>
-          <div className={`tab ${activeTab === 'installments' ? 'active' : ''}`} onClick={() => setActiveTab('installments')}>Cuotas/Pendientes</div>
-          <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>Estadísticas</div>
-          <div className={`tab ${activeTab === 'calc' ? 'active' : ''}`} onClick={() => setActiveTab('calc')}>Calculadora</div>
-          <div className={`tab ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>Pendientes</div>
+          <div className={`tab ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => handleTabChange('inventory')}>Inventario</div>
+          <div className={`tab ${activeTab === 'promos' ? 'active' : ''}`} onClick={() => handleTabChange('promos')}>Promociones</div>
+          <div className={`tab ${activeTab === 'sales' ? 'active' : ''}`} onClick={() => handleTabChange('sales')}>Vender</div>
+          <div className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => handleTabChange('history')}>Historial</div>
+          <div className={`tab ${activeTab === 'installments' ? 'active' : ''}`} onClick={() => handleTabChange('installments')}>Por cobrar</div>
+          <div className={`tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => handleTabChange('stats')}>Estadísticas</div>
+          <div className={`tab ${activeTab === 'calc' ? 'active' : ''}`} onClick={() => handleTabChange('calc')}>Calculadora</div>
+          <div className={`tab ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => handleTabChange('notes')}>Pendientes</div>
+          <div className={`tab ${activeTab === 'expenses' ? 'active' : ''}`} onClick={() => handleTabChange('expenses')}>Gastos</div>
         </div>
         <div className="mobile-tabs">
           <select 
             value={activeTab} 
-            onChange={(e) => setActiveTab(e.target.value)} 
+            onChange={(e) => handleTabChange(e.target.value)} 
             className="tab-select"
           >
             <option value="inventory">Inventario</option>
             <option value="promos">Promociones</option>
             <option value="sales">Vender</option>
             <option value="history">Historial</option>
-            <option value="installments">Cuotas/Pendientes</option>
+            <option value="installments">Por cobrar</option>
             <option value="stats">Estadísticas</option>
             <option value="calc">Calculadora</option>
             <option value="notes">Notas Pendientes</option>
+            <option value="expenses">Gastos</option>
           </select>
         </div>
       </nav>
@@ -675,17 +1141,17 @@ function App() {
                       <div style={{ position: 'relative' }}>
                         <input 
                           type="number" 
-                          step="1"
+                          step="0.01"
                           value={newItem.priceUsd} 
                           onChange={e => setNewItem({...newItem, priceUsd: e.target.value})}
-                          placeholder="0"
-                          min="1"
+                          placeholder="0.00"
+                          min="0.01"
                           required
                         />
-                        {newItem.priceUsd && getActiveRate() > 0 && (
+                        {newItem.priceUsd && rateBcv > 0 && (
                           <div className="currency-preview">
-                            <span>Estimado Bs.</span>
-                            <span>{formatCurrency(newItem.priceUsd * getActiveRate(), 'VES')}</span>
+                            <span>Estimado (Oficial)</span>
+                            <span>{formatCurrency(newItem.priceUsd * rateBcv, 'VES')}</span>
                           </div>
                         )}
                       </div>
@@ -697,37 +1163,113 @@ function App() {
                 </div>
 
                 <div className="premium-card">
-                  <h3 style={{ marginBottom: '1.5rem' }}>Stock Actual</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ margin: 0 }}>Stock Actual</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>VER EN:</label>
+                      <select 
+                        value={inventoryRateType} 
+                        onChange={(e) => setInventoryRateType(e.target.value)}
+                        style={{ width: 'auto', padding: '0.4rem 2rem 0.4rem 0.8rem', fontSize: '0.85rem', height: '36px' }}
+                      >
+                        <option value="bcv">BCV</option>
+                        <option value="euro">EURO</option>
+                        <option value="binance">BINANCE</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className="table-container">
                     <table>
                       <thead>
                         <tr>
-                          <th>Prenda</th>
+                          <th>N Prenda</th>
                           <th>Cant.</th>
                           <th>Precio USD</th>
                           <th>Precio VES</th>
-                          <th style={{ width: '40px' }}></th>
+                          <th>Registrado por</th>
+                          <th style={{ width: '120px', textAlign: 'center' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {inventory.length === 0 ? (
-                          <tr><td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Sin items registrados</td></tr>
+                          <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Sin items registrados</td></tr>
                         ) : (
-                          inventory.map(item => (
-                            <tr key={item.id}>
-                              <td style={{ fontWeight: '500' }}>{item.name}</td>
-                              <td><span className={`badge ${item.quantity < 5 ? 'badge-danger' : 'badge-success'}`}>{item.quantity}</span></td>
-                              <td>{formatCurrency(item.priceUsd)}</td>
-                              <td style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>{formatCurrency(item.priceUsd * rate, 'VES')}</td>
-                              <td>
-                                <button 
-                                  onClick={() => deleteInventory(item.id)}
-                                  style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '4px' }}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            </tr>
+                          inventory.map((item, index) => (
+                             <tr key={item.id}>
+                               {editingItemId === item.id ? (
+                                 <>
+                                   <td>
+                                     <input 
+                                       type="text" 
+                                       value={editItemData.name} 
+                                       onChange={e => setEditItemData({...editItemData, name: e.target.value})}
+                                       style={{ padding: '5px', borderRadius: '4px', border: '1px solid var(--primary)' }}
+                                     />
+                                   </td>
+                                   <td>
+                                     <input 
+                                       type="number" 
+                                       value={editItemData.quantity} 
+                                       onChange={e => setEditItemData({...editItemData, quantity: e.target.value})}
+                                       style={{ width: '70px', padding: '5px', borderRadius: '4px', border: '1px solid var(--primary)' }}
+                                     />
+                                   </td>
+                                   <td>
+                                     <input 
+                                       type="number" 
+                                       step="0.01"
+                                       value={editItemData.priceUsd} 
+                                       onChange={e => setEditItemData({...editItemData, priceUsd: e.target.value})}
+                                       style={{ width: '80px', padding: '5px', borderRadius: '4px', border: '1px solid var(--primary)' }}
+                                     />
+                                   </td>
+                                   <td>
+                                     {formatCurrency(editItemData.priceUsd * (inventoryRateType === 'bcv' ? rateBcv : (inventoryRateType === 'euro' ? rateEuro : rate)), 'VES')}
+                                   </td>
+                                   <td>-</td>
+                                   <td style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                     <button onClick={updateInventory} style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>
+                                       <Check size={18} />
+                                     </button>
+                                     <button onClick={() => setEditingItemId(null)} style={{ background: '#95a5a6', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>
+                                       <X size={18} />
+                                     </button>
+                                   </td>
+                                 </>
+                               ) : (
+                                 <>
+                                   <td style={{ fontWeight: '500' }}>
+                                     <span style={{ marginRight: '8px', color: 'var(--accent)', fontWeight: 'bold' }}>{index + 1}</span>
+                                     {item.name}
+                                   </td>
+                                   <td><span className={`badge ${item.quantity < 5 ? 'badge-danger' : 'badge-success'}`}>{item.quantity}</span></td>
+                                   <td>{formatCurrency(item.priceUsd)}</td>
+                                   <td style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
+                                     {formatCurrency(item.priceUsd * (inventoryRateType === 'bcv' ? rateBcv : (inventoryRateType === 'euro' ? rateEuro : rate)), 'VES')}
+                                   </td>
+                                   <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.author || '-'}</td>
+                                   <td style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                     <button 
+                                       onClick={() => {
+                                         setEditingItemId(item.id);
+                                         setEditItemData({ name: item.name, quantity: item.quantity, priceUsd: item.priceUsd });
+                                       }}
+                                       style={{ background: 'rgba(142, 108, 69, 0.1)', border: 'none', color: 'var(--primary-glow)', cursor: 'pointer', padding: '8px', borderRadius: '8px' }}
+                                     >
+                                       <Pencil size={18} />
+                                     </button>
+                                     <button 
+                                       onClick={() => deleteInventory(item.id)}
+                                       className="btn-trash"
+                                       title="Eliminar item"
+                                       style={{ background: 'rgba(255, 77, 77, 0.15)', border: '1px solid rgba(255, 77, 77, 0.2)', color: '#ff4d4d', cursor: 'pointer', padding: '8px', borderRadius: '8px' }}
+                                     >
+                                       <Trash2 size={18} />
+                                     </button>
+                                   </td>
+                                 </>
+                               )}
+                             </tr>
                           ))
                         )}
                       </tbody>
@@ -745,7 +1287,7 @@ function App() {
                   <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Tag size={20} /> Crear Promoción
                   </h3>
-                  <form onSubmit={(e) => {
+                  <form onSubmit={async (e) => {
                     e.preventDefault();
                     const formData = new FormData(e.target);
                     const selectedItemId = formData.get('itemId');
@@ -759,15 +1301,19 @@ function App() {
                     const minQty = parseInt(formData.get('minQty'));
                     const totalPrice = parseFloat(formData.get('totalPrice'));
                     const newPromo = {
-                      id: Date.now().toString(),
                       itemId: selectedItemId,
                       itemName: selectedItem.name,
                       minQuantity: minQty,
                       promoPrice: totalPrice / minQty,
-                      totalPrice: totalPrice
+                      totalPrice: totalPrice,
+                      author: user?.displayName || user?.email?.split('@')[0] || 'Vendedor'
                     };
-                    setPromotions([...promotions, newPromo]);
-                    e.target.reset();
+                    
+                    try {
+                      const promoId = Date.now().toString()
+                      await setDoc(doc(db, 'promotions', promoId), newPromo)
+                      e.target.reset();
+                    } catch (err) { console.error(err) }
                   }}>
                     <div className="input-group">
                       <label>Prenda para la Oferta</label>
@@ -802,6 +1348,7 @@ function App() {
                         <tr>
                           <th>Condición</th>
                           <th>Precio Promo</th>
+                          <th>Activada por</th>
                           <th style={{ width: '40px' }}></th>
                         </tr>
                       </thead>
@@ -819,9 +1366,13 @@ function App() {
                                 {formatCurrency(promo.totalPrice || (promo.promoPrice * promo.minQuantity))} combo
                                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({formatCurrency(promo.promoPrice)} c/u)</div>
                               </td>
+                              <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{promo.author || '-'}</td>
                               <td>
                                 <button 
-                                  onClick={() => setPromotions(promotions.filter(p => p.id !== promo.id))}
+                                  onClick={async () => {
+                                    const { deleteDoc } = await import('firebase/firestore')
+                                    await deleteDoc(doc(db, 'promotions', promo.id))
+                                  }}
                                   style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer' }}
                                 >
                                   <Trash2 size={16} />
@@ -867,7 +1418,7 @@ function App() {
                         onClick={() => {
                           setResumingSaleId(null)
                           setNewSale({ itemId: '', quantity: 1, paymentMethod: 'USD', status: 'paid', customerName: '', installments: 2, downPayment: 0 })
-                          setActiveTab('installments')
+                          handleTabChange('installments')
                         }}
                         style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer' }}
                         title="Cancelar y volver"
@@ -931,104 +1482,130 @@ function App() {
                         />
                       </div>
                     </div>
-
-                    <div className="input-group">
-                      <label>Prenda</label>
-                      {resumingSaleId ? (
-                        <div className="premium-card" style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                          <span style={{ fontWeight: '500' }}>{inventory.find(i => i.id === newSale.itemId)?.name || 'Prenda Cargada'}</span>
-                        </div>
-                      ) : (
-                        <select 
-                          value={newSale.itemId} 
-                          onChange={e => {
-                            setNewSale({
-                              ...newSale, 
-                              itemId: e.target.value,
-                              quantity: 1,
-                              isManualQuantity: false // Reset mode
-                            })
-                          }}
-                          required
-                        >
-                          <option value="">Seleccione una prenda...</option>
-                          {inventory.filter(i => i.quantity > 0).map(item => {
-                            const hasPromo = promotions.some(p => p.itemId === item.id);
-                            return (
-                              <option key={item.id} value={item.id}>
-                                {item.name} ({item.quantity} disponibles) - {formatCurrency(item.priceUsd)} {hasPromo ? '🔥' : ''}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      )}
-                    </div>
-                    
-                    <div className="input-group">
-                      <label>Cantidad</label>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          {(!newSale.isManualQuantity && (inventory.find(i => i.id === newSale.itemId)?.quantity || 0) <= 10) ? (
-                            <select 
-                              value={newSale.quantity} 
-                              onChange={e => setNewSale({...newSale, quantity: parseInt(e.target.value)})}
-                              required
-                              style={{ flex: 1 }}
-                            >
-                              <option value="">Cant...</option>
-                              {[...Array(inventory.find(i => i.id === newSale.itemId)?.quantity || 1)].map((_, i) => (
-                                <option key={i+1} value={i+1}>{i+1}</option>
-                              ))}
-                            </select>
-                          ) : !newSale.isManualQuantity ? (
-                            <select 
-                              value={newSale.quantity} 
-                              onChange={e => {
-                                if (e.target.value === 'manual') {
-                                  setNewSale({...newSale, isManualQuantity: true, quantity: 11})
-                                } else {
-                                  setNewSale({...newSale, quantity: parseInt(e.target.value)})
-                                }
-                              }}
-                              required
-                              style={{ flex: 1 }}
-                            >
-                              {[...Array(10)].map((_, i) => (
-                                <option key={i+1} value={i+1}>{i+1}</option>
-                              ))}
-                              <option value="manual">Otro (Manual)...</option>
-                            </select>
-                          ) : (
-                            <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                              <input 
-                                type="number" 
-                                value={newSale.quantity} 
-                                onChange={e => {
-                                  const val = parseInt(e.target.value) || 1;
-                                  const stock = inventory.find(i => i.id === newSale.itemId)?.quantity || 0;
-                                  if (val > stock) {
-                                    alert(`Error: Supera el inventario disponible (${stock})`);
-                                    setNewSale({...newSale, quantity: stock});
-                                  } else {
-                                    setNewSale({...newSale, quantity: val});
-                                  }
-                                }}
-                                min="1"
-                                autoFocus
-                                style={{ flex: 1 }}
-                              />
-                              <button 
-                                type="button" 
-                                onClick={() => setNewSale({...newSale, isManualQuantity: false, quantity: 1})}
-                                className="btn-icon"
-                                title="Volver a lista"
-                              >
-                                <X size={16} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.8rem', paddingRight: '46px' }}>
+                        <label style={{ flex: 3, margin: 0, fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          PRENDAS A VENDER
+                        </label>
+                        <label style={{ flex: 1, margin: 0, fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          CANTIDAD
+                        </label>
                       </div>
+                      {newSale.cart.map((cartItem, i) => (
+                        <div key={cartItem.id} className="animate-fade-in" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                          <div className="input-group" style={{ flex: 3, marginBottom: 0 }}>
+                            <select 
+                              value={cartItem.itemId} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (!val) {
+                                   removeFromCart(cartItem.id);
+                                   return;
+                                }
+                                const target = inventory.find(inv => inv.id === val);
+                                const totalUsd = calculateItemTotal(val, cartItem.quantity, newSale.paymentMethod);
+                                setNewSale(prev => ({
+                                  ...prev,
+                                  cart: prev.cart.map(c => c.id === cartItem.id ? {
+                                     ...c, itemId: val, itemName: target.name, totalUsd, priceUsd: totalUsd/cartItem.quantity
+                                  } : c)
+                                }))
+                              }}
+                            >
+                              <option value="">Quitar prenda...</option>
+                              {inventory.map((item, idx) => item.quantity > 0 ? (
+                                <option key={item.id} value={item.id}>
+                                   {item.name} - {formatCurrency(item.priceUsd)}
+                                </option>
+                              ) : null)}
+                            </select>
+                          </div>
+                          
+                          <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                            <input 
+                              type="number" 
+                              value={cartItem.quantity} 
+                              onChange={e => {
+                                const raw = e.target.value;
+                                const invMatch = inventory.find(inv => inv.id === cartItem.itemId);
+                                const maxQty = invMatch ? invMatch.quantity : 1;
+                                
+                                let qty = raw === '' ? '' : parseInt(raw);
+                                if (qty !== '') {
+                                  if (qty <= 0) qty = 1;
+                                  if (qty > maxQty) qty = maxQty;
+                                }
+
+                                const totalUsd = calculateItemTotal(cartItem.itemId, qty || 0, newSale.paymentMethod);
+                                setNewSale(prev => ({
+                                  ...prev,
+                                  cart: prev.cart.map(c => c.id === cartItem.id ? { ...c, quantity: qty, totalUsd, priceUsd: qty ? totalUsd/qty : 0 } : c)
+                                }))
+                              }} 
+                              min="1"
+                              max={inventory.find(inv => inv.id === cartItem.itemId)?.quantity || 1} 
+                            />
+                          </div>
+                          
+                          <button 
+                            type="button" 
+                            title="Remover"
+                            onClick={() => removeFromCart(cartItem.id)}
+                            style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0.8rem 0.5rem', marginTop: '2px' }}
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {inventory.filter(i => i.quantity > 0 && !newSale.cart.some(c => c.itemId === i.id)).length > 0 && (
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                          <div className="input-group" style={{ flex: 3, marginBottom: 0 }}>
+                            <select 
+                              value={newSale.itemId} 
+                              onChange={e => {
+                                const newItemId = e.target.value;
+                                if (!newItemId) return;
+                                
+                                const target = inventory.find(i => i.id === newItemId);
+                                if (!target) return;
+                                
+                                const totalUsd = calculateItemTotal(newItemId, 1, newSale.paymentMethod);
+                                const cartItem = {
+                                  id: Date.now() + Math.random().toString(),
+                                  itemId: newItemId,
+                                  itemName: target.name,
+                                  quantity: 1,
+                                  priceUsd: totalUsd,
+                                  totalUsd
+                                };
+                                
+                                setNewSale(prev => ({
+                                  ...prev,
+                                  cart: [...prev.cart, cartItem],
+                                  itemId: '', 
+                                  quantity: 1
+                                }));
+                              }}
+                              style={{ border: '1px dashed var(--accent)', background: 'rgba(255,255,255,0.5)' }}
+                            >
+                              <option value="">{newSale.cart.length === 0 ? "Seleccione una prenda..." : "+ Añadir otra prenda..."}</option>
+                              {inventory.map((item, idx) => {
+                                const alreadyInCart = newSale.cart.some(c => c.itemId === item.id);
+                                return item.quantity > 0 && !alreadyInCart ? (
+                                  <option key={item.id} value={item.id}>
+                                     {item.name} - {formatCurrency(item.priceUsd)}
+                                  </option>
+                                ) : null;
+                              })}
+                            </select>
+                          </div>
+                          <div className="input-group" style={{ flex: 1, marginBottom: 0, opacity: 0.5, pointerEvents: 'none' }}>
+                             <input type="number" value="1" readOnly style={{ background: '#f5f5f5' }} />
+                          </div>
+                          <div style={{ padding: '0.8rem 0.5rem', width: '36px' }}></div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="input-group">
@@ -1038,7 +1615,7 @@ function App() {
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>No hay promociones configuradas</div>
                         ) : (
                           promotions.map(promo => {
-                            const isSelected = promo.itemId === newSale.itemId;
+                            const isSelected = newSale.cart.some(c => c.itemId === promo.itemId);
                             return (
                               <div 
                                 key={promo.id} 
@@ -1075,25 +1652,11 @@ function App() {
                           onChange={e => setNewSale({...newSale, paymentMethod: e.target.value})}
                         >
                           <option value="USD">Dólares ($)</option>
-                          <option value="VES">Bolívares (Bs)</option>
-                          <option value="SHARED">Pago Compartido ($ + Bs)</option>
+                          <option value="VES">Bolívares</option>
+                          <option value="BINANCE">Binance (USDT)</option>
+                          <option value="SHARED">Pago Compartido ($ + Bolívares)</option>
                         </select>
                       </div>
-
-                      {(newSale.paymentMethod === 'VES' || newSale.paymentMethod === 'SHARED') && (
-                        <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="input-group">
-                          <label>Tasa a Aplicar</label>
-                          <select 
-                            value={newSale.rateType} 
-                            onChange={e => setNewSale({...newSale, rateType: e.target.value})}
-                            style={{ border: '1px solid var(--accent)', background: 'rgba(142, 108, 69, 0.05)' }}
-                          >
-                            <option value="bcv">Tasa BCV ({formatCurrency(rateBcv, 'VES')})</option>
-                            <option value="euro">Tasa Euro ({formatCurrency(rateEuro, 'VES')})</option>
-                            <option value="binance">Tasa Binance ({formatCurrency(rate, 'VES')})</option>
-                          </select>
-                        </motion.div>
-                      )}
 
                       <div className="input-group">
                         <label>Estado</label>
@@ -1102,10 +1665,64 @@ function App() {
                           onChange={e => setNewSale({...newSale, status: e.target.value})}
                         >
                           <option value="paid">Pagado Total</option>
-                          {newSale.paymentMethod !== 'SHARED' && <option value="pending">Aparte (Pendiente)</option>}
+                          {newSale.paymentMethod !== 'SHARED' && !resumingSaleId && <option value="pending">Aparte (Pendiente)</option>}
                         </select>
                       </div>
                     </div>
+
+                    {newSale.paymentMethod === 'BINANCE' && (
+                      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="premium-card" style={{ background: '#12161c', marginBottom: '1.5rem', border: '1px solid #f3ba2f', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+                           <img src="https://upload.wikimedia.org/wikipedia/commons/e/e8/Binance_Logo.svg" alt="Binance" style={{ width: '120px' }} />
+                        </div>
+                        <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', display: 'inline-block', marginBottom: '1rem' }}>
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent('Maria Diaz0124')}`} 
+                            alt="Binance QR" 
+                            style={{ width: '180px', height: '180px' }}
+                          />
+                        </div>
+                        <p style={{ color: '#f3ba2f', fontWeight: 'bold', fontSize: '1.2rem', marginBottom: '0.5rem' }}>Maria Diaz0124</p>
+                        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>Muestra este QR al cliente para recibir el pago USDT</p>
+                      </motion.div>
+                    )}
+
+                    {newSale.paymentMethod === 'VES' && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="premium-card" style={{ background: '#f8f8f8', marginBottom: '1.5rem', border: '1px solid #eb1c24', textAlign: 'center', color: '#333' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', gap: '1rem', alignItems: 'center' }}>
+                           <img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_Banco_de_Venezuela.svg" alt="BDV" style={{ width: '100px' }} />
+                           <h4 style={{ margin: 0, color: '#eb1c24' }}>Pago Móvil</h4>
+                        </div>
+                        <div style={{ background: 'white', padding: '1rem', borderRadius: '12px', display: 'inline-block', marginBottom: '1rem', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent('Pago Movil BDV: 04129734013 CI: 21346892 Banco: 0102')}`} 
+                            alt="Pago Movil QR" 
+                            style={{ width: '180px', height: '180px' }}
+                          />
+                        </div>
+                        <div style={{ textAlign: 'left', background: 'white', padding: '1rem', borderRadius: '12px', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                          <div style={{ marginBottom: '0.3rem' }}><strong>CI:</strong> V21346892</div>
+                          <div style={{ marginBottom: '0.3rem' }}><strong>Tel:</strong> 04129734013</div>
+                          <div><strong>Banco:</strong> 0102 - BDV</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button type="button" onClick={copyPaymentData} className="btn" style={{ flex: 1, background: '#eb1c24', color: 'white', fontSize: '0.8rem' }}>
+                            <Copy size={14} /> Copiar
+                          </button>
+                          <button type="button" onClick={sharePaymentData} className="btn" style={{ flex: 1, background: '#25D366', color: 'white', fontSize: '0.8rem' }}>
+                            <Share2 size={14} /> Compartir
+                          </button>
+                        </div>
+                        <a 
+                          href="https://bdvdigital.banvenez.com/pagomovil?id=V21346892&phone=584129734013&bank=0102&description=9dxBliWt4XnVSB0LTqNasQ%3D%3D" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          style={{ display: 'block', marginTop: '1rem', fontSize: '0.75rem', color: '#eb1c24', fontWeight: 'bold', textDecoration: 'none' }}
+                        >
+                          Si tienes BDVapp haz click aquí
+                        </a>
+                      </motion.div>
+                    )}
 
                     {newSale.paymentMethod === 'SHARED' && (
                       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="premium-card" style={{ background: 'rgba(142, 108, 69, 0.05)', marginBottom: '1rem', border: '1px dashed var(--accent)' }}>
@@ -1135,7 +1752,7 @@ function App() {
                                    type="button"
                                    title="Cubrir total con $"
                                    onClick={() => {
-                                     const targetTotal = calculateItemTotal(newSale.itemId, newSale.quantity, 'SHARED');
+                                     const targetTotal = getGrandTotal();
                                      const activeRate = getActiveRate();
                                      const paidVesUsd = (Number(newSale.sharedVes) || 0) / activeRate;
                                      setNewSale({...newSale, sharedUsd: Math.max(0, targetTotal - paidVesUsd).toFixed(2)});
@@ -1152,67 +1769,105 @@ function App() {
                                )}
                              </div>
                           </div>
+                            <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                              <label>Bolívares / Pago Móvil (Sincronizado)</label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                                <div className="grid-2-cols" style={{ marginTop: 0 }}>
+                                  <div style={{ position: 'relative' }}>
+                                    <input 
+                                      type="number" 
+                                      step="0.01" 
+                                      value={newSale.sharedVesUsd}
+                                      placeholder="En $"
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        if (val === '') {
+                                          setNewSale({...newSale, sharedVesUsd: '', sharedVes: ''});
+                                        } else {
+                                          const activeRate = getActiveRate();
+                                          setNewSale({
+                                            ...newSale, 
+                                            sharedVesUsd: val, 
+                                            sharedVes: (parseFloat(val) * activeRate).toFixed(2)
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '0.8rem' }}>$</div>
+                                  </div>
+                                  <div style={{ position: 'relative' }}>
+                                    <input 
+                                      type="number" 
+                                      step="0.01" 
+                                      value={newSale.sharedVes}
+                                      placeholder="En Bolívares"
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        if (val === '') {
+                                          setNewSale({...newSale, sharedVes: '', sharedVesUsd: ''});
+                                        } else {
+                                          const activeRate = getActiveRate();
+                                          setNewSale({
+                                            ...newSale, 
+                                            sharedVes: val, 
+                                            sharedVesUsd: (parseFloat(val) / activeRate).toFixed(2)
+                                          });
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                   <button type="button" onClick={() => openModal('qr')} className="btn" style={{ flex: 1, background: '#eb1c24', color: 'white', fontSize: '0.75rem', height: '36px' }}>
+                                      <QrCode size={14} /> QR Pago Móvil
+                                   </button>
+                                   <button type="button" onClick={copyPaymentData} className="btn" style={{ flex: 1, background: '#eb1c24', color: 'white', fontSize: '0.75rem', height: '36px' }}>
+                                      <Copy size={14} /> Copiar Datos
+                                   </button>
+                                </div>
+                              </div>
+                              {Number(newSale.sharedVes) > 0 && (
+                                <div style={{ fontSize: '0.8rem', color: 'var(--warning)', marginTop: '0.5rem', fontWeight: '600' }}>
+                                  Monto a cobrar: {formatCurrency(newSale.sharedVes, 'VES')}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
                            <div className="input-group" style={{ gridColumn: '1 / -1' }}>
-                             <label>Bolívares / Pago Móvil (Sincronizado)</label>
-                             <div className="grid-2-cols" style={{ marginTop: 0 }}>
-                               <div style={{ position: 'relative' }}>
-                                 <input 
-                                   type="number" 
-                                   step="0.01" 
-                                   value={newSale.sharedVesUsd}
-                                   placeholder="En $"
-                                   onChange={e => {
-                                     const val = e.target.value;
-                                     if (val === '') {
-                                       setNewSale({...newSale, sharedVesUsd: '', sharedVes: ''});
-                                     } else {
-                                       // Solo actualizamos Bs, mantenemos el $ tal cual el usuario lo escribió
-                                       const activeRate = getActiveRate();
-                                       setNewSale({
-                                         ...newSale, 
-                                         sharedVesUsd: val, 
-                                         sharedVes: (parseFloat(val) * activeRate).toFixed(2)
-                                       });
-                                     }
-                                   }}
-                                 />
-                                 <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '0.8rem' }}>$</div>
+                               <label style={{ color: '#f3ba2f', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                 <img src="https://upload.wikimedia.org/wikipedia/commons/e/e8/Binance_Logo.svg" alt="Binance" style={{ width: '14px' }} />
+                                 Binance USDT
+                               </label>
+                               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                 <div style={{ position: 'relative', flex: 1 }}>
+                                   <input 
+                                     type="number" 
+                                     step="0.01" 
+                                     value={newSale.sharedBinance}
+                                     placeholder="0.00"
+                                     onChange={e => setNewSale({...newSale, sharedBinance: e.target.value})}
+                                   />
+                                   <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#f3ba2f', fontSize: '0.7rem', fontWeight: 'bold' }}>USDT</div>
+                                 </div>
+                                 <button type="button" onClick={() => openModal('qr')} className="btn-icon" style={{ background: '#f3ba2f', color: '#12161c', border: 'none' }} title="Ver QR Binance">
+                                   <QrCode size={18} />
+                                 </button>
                                </div>
-                               <div style={{ position: 'relative' }}>
-                                 <input 
-                                   type="number" 
-                                   step="0.01" 
-                                   value={newSale.sharedVes}
-                                   placeholder="En Bs"
-                                   onChange={e => {
-                                     const val = e.target.value;
-                                     if (val === '') {
-                                       setNewSale({...newSale, sharedVes: '', sharedVesUsd: ''});
-                                     } else {
-                                       // Solo actualizamos $, mantenemos los Bs tal cual se escribieron
-                                       const activeRate = getActiveRate();
-                                       setNewSale({
-                                         ...newSale, 
-                                         sharedVes: val, 
-                                         sharedVesUsd: (parseFloat(val) / activeRate).toFixed(2)
-                                       });
-                                     }
-                                   }}
-                                 />
-                                 <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Bs</div>
-                               </div>
+                               {Number(newSale.sharedBinance) > 0 && (
+                                 <div style={{ fontSize: '0.7rem', color: 'rgba(0,0,0,0.4)', marginTop: '0.4rem', fontStyle: 'italic' }}>
+                                   Muestra el QR de Binance al cliente si es necesario
+                                 </div>
+                               )}
                              </div>
-                             {Number(newSale.sharedVes) > 0 && (
-                               <div style={{ fontSize: '0.8rem', color: 'var(--warning)', marginTop: '0.5rem', fontWeight: '600' }}>
-                                 Monto a cobrar: {formatCurrency(newSale.sharedVes, 'VES')}
-                               </div>
-                             )}
-                           </div>
-                        </div>
                         <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', marginTop: '1rem', paddingTop: '0.8rem' }}>
                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                              <span style={{ color: 'var(--text-muted)' }}>Monto en Efectivo:</span>
                              <span style={{ fontWeight: '600' }}>{formatCurrency(Number(newSale.sharedUsd || 0))}</span>
+                           </div>
+                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: '0.3rem' }}>
+                             <span style={{ color: 'var(--text-muted)' }}>Monto en Binance ($):</span>
+                             <span style={{ fontWeight: '600', color: '#f3ba2f' }}>{formatCurrency(Number(newSale.sharedBinance || 0))}</span>
                            </div>
                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: '0.3rem' }}>
                              <span style={{ color: 'var(--text-muted)' }}>Monto en Bolívares ($):</span>
@@ -1222,8 +1877,8 @@ function App() {
                            {(() => {
                              const activeRate = getActiveRate();
                              const historicalAbono = resumingSaleId ? (sales.find(s => String(s.id) === String(resumingSaleId))?.downPayment || 0) : 0;
-                             const currentInputs = (Number(newSale.sharedUsd || 0) + (Number(newSale.sharedVes || 0) / activeRate));
-                             const currentTotalToPay = calculateItemTotal(newSale.itemId, newSale.quantity, 'SHARED', Number(newSale.sharedVes) > 0);
+                             const currentInputs = (Number(newSale.sharedUsd || 0) + (Number(newSale.sharedVes || 0) / activeRate) + Number(newSale.sharedBinance || 0));
+                             const currentTotalToPay = getGrandTotal();
                              const totalNow = historicalAbono + currentInputs;
                              
                              return (
@@ -1269,7 +1924,7 @@ function App() {
 
                     {resumingSaleId && (
                       <div className="input-group animate-fade-in" style={{ background: 'rgba(142, 108, 69, 0.05)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--accent)', gridColumn: '1 / -1' }}>
-                        <label style={{ color: 'var(--accent)', fontWeight: 'bold' }}>Pagar ahora:</label>
+                        <label style={{ color: 'var(--accent)', fontWeight: 'bold' }}>Pagar ahora (Cuota 2):</label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                           <select 
                             value={newSale.installmentsToPay} 
@@ -1277,12 +1932,9 @@ function App() {
                             style={{ flex: 1 }}
                           >
                             {[...Array(Math.max(0, Number(newSale.installments || 0) - Number(newSale.paidInstallments || 0)))].map((_, i) => (
-                              <option key={i+1} value={i+1}>{i+1} Cuota(s)</option>
+                              <option key={i+1} value={i+1}>2da Cuota (Final)</option>
                             ))}
                           </select>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            de {Number(newSale.installments) - Number(newSale.paidInstallments)} restantes
-                          </span>
                         </div>
                       </div>
                     )}
@@ -1295,7 +1947,7 @@ function App() {
                             value={newSale.installments} 
                             onChange={e => setNewSale({...newSale, installments: parseInt(e.target.value)})}
                           >
-                            {[2,3,4,5,6].map(n => (
+                            {[2].map(n => (
                               <option key={n} value={n}>{n} Cuotas</option>
                             ))}
                           </select>
@@ -1316,13 +1968,26 @@ function App() {
                     )}
 
                     {newSale.itemId && (
-                      <div className="premium-card" style={{ background: 'rgba(255,255,255,0.02)', marginBottom: '1.5rem' }}>
+                      <div className="premium-card" style={{ background: 'rgba(255,255,255,0.02)', marginBottom: '1.5rem', border: '1px solid var(--border)' }}>
+                        <div style={{ marginBottom: '1.25rem' }}>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block', textTransform: 'uppercase' }}>Tasa para Conversión</label>
+                          <select 
+                            value={newSale.rateType} 
+                            onChange={e => setNewSale({...newSale, rateType: e.target.value})}
+                            style={{ border: '2px solid var(--primary)', background: 'rgba(194, 168, 136, 0.08)', fontWeight: 'bold', fontSize: '1.1rem' }}
+                          >
+                            <option value="bcv">Tasa BCV ({parseFloat(rateBcv).toLocaleString('es-VE')})</option>
+                            <option value="euro">Tasa Euro ({parseFloat(rateEuro).toLocaleString('es-VE')})</option>
+                            <option value="binance">Tasa Binance ({parseFloat(rate).toLocaleString('es-VE')})</option>
+                          </select>
+                        </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <span>Total a pagar:</span>
-                            {((newSale.paymentMethod === 'VES') || (newSale.paymentMethod === 'SHARED' && (Number(newSale.sharedVes) / getActiveRate()) >= 1)) && (
+                            {((newSale.paymentMethod === 'VES') || (newSale.paymentMethod === 'BINANCE') || (newSale.paymentMethod === 'SHARED' && (Number(newSale.sharedVes) / getActiveRate()) >= 1)) && (
                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                 <button type="button" onClick={() => setShowQrModal(true)} className="btn-icon" title="Ver QR">
+                                 <button type="button" onClick={() => openModal('qr')} className="btn-icon" title="Ver QR">
                                    <QrCode size={18} />
                                  </button>
                                  <button type="button" onClick={copyPaymentData} className="btn-icon" title="Copiar Datos">
@@ -1341,7 +2006,7 @@ function App() {
                                 const isPromoActive = totalUsd < originalPriceTotal;
                                 const totalVes = totalUsd * activeRate;
 
-                                if (newSale.paymentMethod === 'USD' || newSale.paymentMethod === 'SHARED') {
+                                if (newSale.paymentMethod === 'USD' || newSale.paymentMethod === 'SHARED' || newSale.paymentMethod === 'BINANCE') {
                                   return (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                       {isPromoActive && (
@@ -1352,6 +2017,11 @@ function App() {
                                       <span style={{ fontWeight: 'bold', fontSize: '1.4rem', color: 'var(--success)' }}>
                                         {formatCurrency(totalUsd)}
                                       </span>
+                                      {newSale.paymentMethod === 'USD' && (
+                                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: '600' }}>
+                                          ≈ {formatCurrency(totalVes, 'VES')}
+                                        </span>
+                                      )}
                                     </div>
                                   );
                                 } else {
@@ -1391,7 +2061,7 @@ function App() {
                                  <div style={{ marginTop: '0.8rem', paddingTop: '0.8rem', borderTop: '1px dashed var(--border)' }}>
                                    {historicalAbono > 0 && (
                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
-                                       <span>Abono Registrado:</span>
+                                       <span>Pago Registrado:</span>
                                        <span>{formatCurrency(historicalAbono)}</span>
                                      </div>
                                    )}
@@ -1403,10 +2073,10 @@ function App() {
                                    )}
                                    {(resumingSaleId || newSale.status === 'pending') && (
                                      <>
-                                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--warning)', fontWeight: 'bold', marginTop: '0.5rem' }}>
-                                         <span>Saldo Pendiente:</span>
-                                         <span>{formatCurrency(Math.max(0, calculateItemTotal(newSale.itemId, newSale.quantity, newSale.paymentMethod, Number(newSale.sharedVes) > 0) - totalPaidSoFar))}</span>
-                                       </div>
+                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--warning)', fontWeight: 'bold', marginTop: '0.5rem' }}>
+                                 <span>Saldo Pendiente:</span>
+                                 <span>{formatCurrency(Math.max(0, getGrandTotal() - totalPaidSoFar))}</span>
+                               </div>
                                        {newSale.installments > 1 && (
                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '0.3rem', color: 'var(--text-muted)' }}>
                                            <span>{newSale.installments} cuotas de:</span>
@@ -1423,8 +2093,11 @@ function App() {
 
 
                         
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: '1rem' }}>
-                          Tasa aplicada: {formatCurrency(rate, 'VES')}
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
+                          <div>Tasa {(newSale.rateType || 'bcv').toUpperCase()}: {parseFloat(getActiveRate()).toLocaleString('es-VE')}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--primary-glow)', marginTop: '2px' }}>
+                            Calculado: {calculateItemTotal(newSale.itemId, newSale.quantity, 'USD').toFixed(2)} USD × {parseFloat(getActiveRate()).toLocaleString('es-VE')}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1449,12 +2122,12 @@ function App() {
                     <thead>
                       <tr>
                         <th>Fecha</th>
-                        <th>Vendedor</th>
                         <th>Cliente</th>
                         <th>Prenda</th>
                         <th>Cant.</th>
                         <th>Total USD</th>
                         <th>Total VES / Pago</th>
+                        <th>Vendedor</th>
                         <th>Estado</th>
                         <th style={{ width: '80px' }}>Acciones</th>
                       </tr>
@@ -1465,9 +2138,6 @@ function App() {
                         <tr key={sale.id}>
                           <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                             {new Date(sale.date).toLocaleDateString()}
-                          </td>
-                          <td style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--accent)' }}>
-                            {sale.sellerName?.split(' ')[0] || 'N/A'}
                           </td>
                           <td style={{ fontWeight: '500' }}>
                             <div>{sale.customerName}</div>
@@ -1481,9 +2151,10 @@ function App() {
                           <td>
                             <div style={{ fontSize: '0.9rem' }}>{formatCurrency(sale.totalVes, 'VES')}</div>
                             <div style={{ fontSize: '0.7rem', color: 'var(--accent)' }}>
-                              via {sale.paymentMethod === 'SHARED' ? `$${sale.sharedUsd} + Bs.${sale.sharedVes}` : sale.paymentMethod}
+                              via {sale.paymentMethod === 'SHARED' ? `$${sale.sharedUsd} + ${sale.sharedVes}` : sale.paymentMethod}
                             </div>
                           </td>
+                          <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sale.sellerName || '-'}</td>
                           <td>
                             <span className={`badge ${sale.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
                               {sale.status === 'paid' ? 'Pagado' : 'Pendiente'}
@@ -1493,8 +2164,7 @@ function App() {
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button 
                                 onClick={() => {
-                                  setSelectedReceipt(sale)
-                                  setShowReceiptModal(true)
+                                  openModal('receipt', sale)
                                 }}
                                 style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: '4px' }}
                                 title="Ver Recibo"
@@ -1503,8 +2173,7 @@ function App() {
                               </button>
                               <button 
                                 onClick={() => {
-                                  setSelectedReceipt(sale)
-                                  setShowDeliveryModal(true)
+                                  openModal('delivery', sale)
                                 }}
                                 style={{ background: 'none', border: 'none', color: 'var(--primary-glow)', cursor: 'pointer', padding: '4px' }}
                                 title="Nota de Entrega"
@@ -1534,7 +2203,7 @@ function App() {
             <motion.div key="installments" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               <div className="premium-card">
                 <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <CreditCard size={20} /> Ventas Por Partes / Pendientes
+                  <CreditCard size={20} /> Cuentas por Cobrar
                 </h3>
                 <div className="grid-layout" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
                   {sales.filter(s => s.status === 'pending').length === 0 ? (
@@ -1542,11 +2211,11 @@ function App() {
                       No hay cobros pendientes
                     </div>
                   ) : (
-                    sales.filter(s => s.status === 'pending').map(sale => (
+                    sales.filter(s => s.status === 'pending').map((sale, index) => (
                       <div key={sale.id} className="premium-card" style={{ background: 'rgba(255,255,255,0.03)', borderLeft: '4px solid var(--warning)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                           <div>
-                            <h4 style={{ color: 'var(--accent)' }}>{sale.customerName}</h4>
+                            <h4 style={{ color: 'var(--accent)' }}>{index + 1}. {sale.customerName}</h4>
                             {sale.customerPhone && (
                               <p style={{ fontSize: '0.75rem', color: 'var(--primary-glow)', display: 'flex', alignItems: 'center', gap: '4px', margin: '2px 0' }}>
                                 <Share2 size={12} /> {sale.customerPhone}
@@ -1565,7 +2234,7 @@ function App() {
                             <span style={{ fontWeight: '700', color: 'var(--warning)' }}>{formatCurrency(sale.totalUsd - sale.downPayment)}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '0.25rem', color: 'var(--accent)' }}>
-                            <span>En Bs. (Hoy):</span>
+                            <span>Hoy:</span>
                             <span>{formatCurrency((sale.totalUsd - sale.downPayment) * rate, 'VES')}</span>
                           </div>
                           {sale.downPayment > 0 && (
@@ -1575,19 +2244,17 @@ function App() {
                             </div>
                           )}
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '0.5rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border)', paddingTop: '0.5rem' }}>
-                            <span>{sale.installments} cuotas de:</span>
-                            <span>{formatCurrency((sale.totalUsd - sale.downPayment) / sale.installments)}</span>
+                            <span>Cuota final (1) de:</span>
+                             <span>{formatCurrency(sale.totalUsd - sale.downPayment)}</span>
                           </div>
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                          Registrado el: {new Date(sale.date).toLocaleString()}
-                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                           <span>Registrado: {new Date(sale.date).toLocaleDateString()}</span>
+                           <span style={{ fontWeight: '600' }}>Vendedor: {sale.sellerName || '-'}</span>
+                         </div>
                         <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem' }}>
                           <button 
-                            onClick={() => {
-                              setSelectedReceipt(sale)
-                              setShowReceiptModal(true)
-                            }}
+                            onClick={() => openModal('receipt', sale)}
                             className="btn-secondary" 
                             style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                           >
@@ -1681,25 +2348,57 @@ function App() {
               </div>
 
               <div className="premium-card" style={{ marginTop: '2rem' }}>
-                <h3 style={{ marginBottom: '1.5rem' }}>Análisis de Rendimiento</h3>
+                <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <DollarSign size={20} color="var(--success)" /> Rentabilidad: Ventas vs Gastos
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '2rem' }}>
+                  <motion.div whileHover={{ y: -5 }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Total Ventas (Ingresos)</p>
+                    <p style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--success)' }}>
+                      {formatCurrency(stats.totalSales)}
+                    </p>
+                  </motion.div>
+                  <motion.div whileHover={{ y: -5 }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Total Gastos (Egresos)</p>
+                    <p style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--danger)' }}>
+                      {formatCurrency(stats.totalExpenses)}
+                    </p>
+                  </motion.div>
+                  <motion.div 
+                    whileHover={{ y: -5 }}
+                    style={{ background: 'rgba(142, 108, 69, 0.03)', padding: '1rem', borderRadius: '16px', border: '1px dashed var(--primary)' }}
+                  >
+                    <p style={{ color: 'var(--primary-glow)', fontSize: '0.85rem', fontWeight: 'bold' }}>Rentabilidad (Neto)</p>
+                    <p style={{ fontSize: '2rem', fontWeight: '900', color: stats.profitability >= 0 ? 'var(--primary-glow)' : 'var(--danger)' }}>
+                      {formatCurrency(stats.profitability)}
+                    </p>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                      Margen de beneficio: {stats.totalSales > 0 ? Math.round((stats.profitability / stats.totalSales) * 100) : 0}%
+                    </div>
+                  </motion.div>
+                </div>
+              </div>
+
+              <div className="premium-card" style={{ marginTop: '2rem' }}>
+                <h3 style={{ marginBottom: '1.5rem' }}>Análisis de Mercado</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '2rem' }}>
                   <div>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Ticket Promedio</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Ticket Promedio por Venta</p>
                     <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--success)' }}>
-                      {formatCurrency(sales.length > 0 ? sales.reduce((acc, s) => acc + s.totalUsd, 0) / sales.length : 0)}
+                      {formatCurrency(sales.length > 0 ? (sales.reduce((acc, s) => acc + s.totalUsd, 0) / sales.length) : 0)}
                     </p>
                   </div>
                   <div>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Prenda más Vendida</p>
                     <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
                       {sales.length > 0 ? Object.entries(sales.reduce((acc, s) => {
-                        acc[s.itemName] = (acc[s.itemName] || 0) + s.quantity;
+                        acc[s.itemName] = (acc[s.itemName] || 0) + (Number(s.quantity) || 0);
                         return acc;
                       }, {})).sort((a,b) => b[1] - a[1])[0][0] : 'N/A'}
                     </p>
                   </div>
                   <div>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Efectividad de Pagos</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Efectividad de Cobro</p>
                     <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--warning)' }}>
                       {sales.length > 0 ? Math.round((sales.filter(s => s.status === 'paid').length / sales.length) * 100) : 0}% Pagado
                     </p>
@@ -1711,187 +2410,204 @@ function App() {
 
           {activeTab === 'calc' && (
             <motion.div key="calc" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
-              <div className="calculator-container premium-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Calculator size={22} color="var(--primary-glow)" /> {calcMode === 'financial' ? 'Calculadora Global' : 'Calculadora Estándar'}
-                  </h3>
-                  <div style={{ display: 'flex', gap: '0.6rem' }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      background: 'rgba(142, 108, 69, 0.05)', 
-                      padding: '4px', 
-                      borderRadius: '10px', 
-                      border: '1px solid var(--border)',
-                      marginRight: '0.5rem'
-                    }}>
-                      <button 
-                        onClick={() => setCalcMode('financial')}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: calcMode === 'financial' ? 'var(--primary-glow)' : 'transparent',
-                          color: calcMode === 'financial' ? 'white' : 'var(--text-muted)',
-                          fontSize: '0.7rem',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        Financiera
-                      </button>
-                      <button 
-                        onClick={() => setCalcMode('normal')}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: calcMode === 'normal' ? 'var(--primary-glow)' : 'transparent',
-                          color: calcMode === 'normal' ? 'white' : 'var(--text-muted)',
-                          fontSize: '0.7rem',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        Normal
-                      </button>
-                    </div>
-                    <button 
-                      className="btn-icon" 
-                      title="Copiar Valor"
-                      onClick={() => {
-                        navigator.clipboard.writeText(calcVal);
-                        alert("Copiado: " + calcVal);
+
+              {/* ── Toggle Switch ── */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+                <div style={{
+                  display: 'inline-flex',
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '50px',
+                  padding: '4px',
+                  gap: '4px',
+                  boxShadow: '0 4px 15px rgba(142,108,69,0.1)'
+                }}>
+                  <button onClick={() => setCalcMode('normal')} style={{
+                    padding: '8px 20px',
+                    borderRadius: '50px',
+                    border: 'none',
+                    background: calcMode === 'normal' ? 'var(--primary-glow)' : 'transparent',
+                    color: calcMode === 'normal' ? 'white' : 'var(--text-muted)',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}>
+                    <Calculator size={14} /> Calculadora
+                  </button>
+                  <button onClick={() => setCalcMode('financial')} style={{
+                    padding: '8px 20px',
+                    borderRadius: '50px',
+                    border: 'none',
+                    background: calcMode === 'financial' ? 'var(--primary-glow)' : 'transparent',
+                    color: calcMode === 'financial' ? 'white' : 'var(--text-muted)',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}>
+                    <DollarSign size={14} /> Convertidor
+                  </button>
+                </div>
+              </div>
+
+              {/* ── MODO CALCULADORA NORMAL ── */}
+              {calcMode === 'normal' && (
+                <div className="premium-card" style={{ width: '100%', padding: '1rem' }}>
+                  {/* Display */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #2d1f10, #3d2815)',
+                    borderRadius: '16px',
+                    padding: '1rem 1.5rem',
+                    marginBottom: '1rem',
+                    minHeight: '100px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between'
+                  }}>
+                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', minHeight: '20px' }}>{calcHistory}</div>
+                    <div style={{ fontSize: '2.8rem', fontWeight: '700', color: 'white', textAlign: 'right', wordBreak: 'break-all' }}>{calcVal}</div>
+                  </div>
+
+                  {/* Grid de botones — full width */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', width: '100%' }}>
+                    <button onClick={clearCalc} style={btnStyle('clear')}>AC</button>
+                    <button onClick={() => setCalcVal(calcVal.length > 1 ? calcVal.slice(0, -1) : '0')} style={btnStyle('op')}>⌫</button>
+                    <button onClick={() => setCalcVal(String(parseFloat(calcVal || 0) / 100))} style={btnStyle('op')}>%</button>
+                    <button onClick={() => handleCalcOp('/')} style={btnStyle('op')}>÷</button>
+
+                    {[7,8,9].map(n => <button key={n} onClick={() => handleCalcInput(n)} style={btnStyle('num')}>{n}</button>)}
+                    <button onClick={() => handleCalcOp('*')} style={btnStyle('op')}>×</button>
+
+                    {[4,5,6].map(n => <button key={n} onClick={() => handleCalcInput(n)} style={btnStyle('num')}>{n}</button>)}
+                    <button onClick={() => handleCalcOp('-')} style={btnStyle('op')}>−</button>
+
+                    {[1,2,3].map(n => <button key={n} onClick={() => handleCalcInput(n)} style={btnStyle('num')}>{n}</button>)}
+                    <button onClick={() => handleCalcOp('+')} style={btnStyle('op')}>+</button>
+
+                    <button onClick={() => handleCalcInput(0)} style={{ ...btnStyle('num'), gridColumn: 'span 2' }}>0</button>
+                    <button onClick={() => handleCalcInput('.')} style={btnStyle('num')}>.</button>
+                    <button onClick={handleCalcEqual} style={btnStyle('eq')}>=</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── MODO CONVERTIDOR ── */}
+              {calcMode === 'financial' && (
+                <div>
+                  {/* Header con botón actualizar */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', padding: '0 0.25rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Ingresa un monto para convertir</span>
+                    <button
+                      onClick={() => fetchRate()}
+                      disabled={updatingRates}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '6px 14px',
+                        background: updatingRates ? '#ccc' : 'var(--primary-glow)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '20px',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        cursor: updatingRates ? 'not-allowed' : 'pointer',
+                        opacity: updatingRates ? 0.7 : 1,
+                        transition: 'all 0.3s ease'
                       }}
                     >
-                      <Copy size={16} />
-                    </button>
-                    <button 
-                      className="btn-icon" 
-                      title="Limpiar Todo"
-                      onClick={clearCalc}
-                    >
-                      <Trash2 size={16} color="var(--danger)" />
+                      {updatingRates ? '⏳ Actualizando...' : '↻ Actualizar Tasas'}
                     </button>
                   </div>
-                </div>
 
-                {calcMode === 'financial' && (
-                  <div className="calc-rates">
-                    <div 
-                      className={`rate-badge ${calcRateType === 'bcv' ? 'active' : ''}`}
-                      onClick={() => setCalcRateType('bcv')}
-                    >
-                      <label>BCV (Oficial)</label>
-                      <span>{formatCurrency(rateBcv, 'VES')}</span>
-                    </div>
-                    <div 
-                      className={`rate-badge ${calcRateType === 'euro' ? 'active' : ''}`}
-                      onClick={() => setCalcRateType('euro')}
-                    >
-                      <label>Euro</label>
-                      <span>{formatCurrency(rateEuro, 'VES')}</span>
-                    </div>
-                    <div 
-                      className={`rate-badge ${calcRateType === 'binance' ? 'active' : ''}`}
-                      onClick={() => setCalcRateType('binance')}
-                    >
-                      <label>Binance</label>
-                      <span>{formatCurrency(rate, 'VES')}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="calc-display" style={{ marginBottom: '1.5rem' }}>
-                  <div className="calc-history">{calcHistory}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                    <span style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                      {calcMode === 'financial' ? (calcRateType || 'BCV').toUpperCase() : 'MODO ESTÁNDAR'}
-                    </span>
-                    <div className="calc-main-num">{calcVal}</div>
-                  </div>
-                </div>
-
-                {calcMode === 'financial' && (
-                  <>
-                    <div className="calc-actions-row">
-                      <button className="calc-extra-btn" onClick={() => {
-                        const currentRate = calcRateType === 'bcv' ? rateBcv : (calcRateType === 'euro' ? rateEuro : rate);
-                        setCalcVal((parseFloat(calcVal) * currentRate).toFixed(2));
-                      }}>
-                        <DollarSign size={14} /> a Bs.
-                      </button>
-                      <button className="calc-extra-btn" onClick={() => {
-                        const currentRate = calcRateType === 'bcv' ? rateBcv : (calcRateType === 'euro' ? rateEuro : rate);
-                        setCalcVal((parseFloat(calcVal) / currentRate).toFixed(2));
-                      }}>
-                        <TrendingUp size={14} /> a $
-                      </button>
-                    </div>
-
-                    <div className="calc-actions-row" style={{ marginBottom: '1.5rem' }}>
-                      {[5, 10, 20, 50].map(bill => (
-                        <button key={bill} className="calc-extra-btn" style={{ fontSize: '0.75rem' }} onClick={() => {
-                          if (calcVal === '0' || shouldReset) {
-                            setCalcVal(String(bill));
-                            setShouldReset(false);
-                          } else {
-                            setCalcVal(String(parseFloat(calcVal) + bill));
-                          }
+                  {/* 3 Currency Cards */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {[
+                      { label: 'Dólar Estadounidense', symbol: '$', color: '#22c55e', icon: '💵', currentRate: rateBcv, rateLabel: 'BCV', currency: 'USD' },
+                      { label: 'Euro', symbol: '€', color: '#3b82f6', icon: '💶', currentRate: rateEuro, rateLabel: 'EURO', currency: 'EUR' },
+                      { label: 'Tether (USDT)', symbol: '₮', color: '#f59e0b', icon: '🟡', currentRate: rate, rateLabel: 'BINANCE', currency: 'USDT' }
+                    ].map(({ label, symbol, color, icon, currentRate, rateLabel, currency }) => {
+                      const amt = parseFloat(calcVal) || 0;
+                      const inVes = (amt * currentRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                      return (
+                        <div key={currency} style={{
+                          background: 'linear-gradient(135deg, #1a1108, #2d1f10)',
+                          borderRadius: '20px',
+                          padding: '1.25rem 1.5rem',
+                          border: `1px solid ${color}22`,
+                          boxShadow: `0 8px 25px ${color}15`
                         }}>
-                          +${bill}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <div className="calc-grid">
-                  <button className="calc-btn clear" onClick={clearCalc}>AC</button>
-                  <button className="calc-btn op" onClick={() => setCalcVal(calcVal.length > 1 ? calcVal.slice(0, -1) : '0')}>
-                    <X size={18} />
-                  </button>
-                  <button className="calc-btn op" style={{ fontSize: '1.5rem' }} onClick={() => handleCalcOp('/')}>÷</button>
-                  <button className="calc-btn op" style={{ fontSize: '1.5rem' }} onClick={() => handleCalcOp('*')}>×</button>
-                  
-                  {[7, 8, 9].map(n => <button key={n} className="calc-btn" onClick={() => handleCalcInput(n)}>{n}</button>)}
-                  <button className="calc-btn op" style={{ fontSize: '1.5rem' }} onClick={() => handleCalcOp('-')}>−</button>
-                  
-                  {[4, 5, 6].map(n => <button key={n} className="calc-btn" onClick={() => handleCalcInput(n)}>{n}</button>)}
-                  <button className="calc-btn op" style={{ fontSize: '1.5rem' }} onClick={() => handleCalcOp('+')}>+</button>
-                  
-                  {[1, 2, 3].map(n => <button key={n} className="calc-btn" onClick={() => handleCalcInput(n)}>{n}</button>)}
-                  <button className="calc-btn action" style={{ gridRow: 'span 2', height: '128px' }} onClick={handleCalcEqual}>=</button>
-                  
-                  <button className="calc-btn" style={{ gridColumn: 'span 2' }} onClick={() => handleCalcInput(0)}>0</button>
-                  <button className="calc-btn" onClick={() => handleCalcInput('.')}>.</button>
-                </div>
-
-                {calcMode === 'financial' && parseFloat(calcVal) > 0 && (
-                  <div className="calc-conversion animate-fade-in" style={{ flexDirection: 'column', gap: '0.8rem', alignItems: 'stretch' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div className="label" style={{ color: 'var(--primary-glow)' }}>Si son Dólares ($):</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tasa {calcRateType.toUpperCase()}</div>
-                      </div>
-                      <div className="value" style={{ color: 'var(--primary-glow)' }}>
-                        {formatCurrency(parseFloat(calcVal) * (calcRateType === 'bcv' ? rateBcv : (calcRateType === 'euro' ? rateEuro : rate)), 'VES')}
-                      </div>
-                    </div>
-                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div className="label" style={{ color: 'var(--success)' }}>Si son Bolívares (Bs):</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tasa {calcRateType.toUpperCase()}</div>
-                      </div>
-                      <div className="value" style={{ color: 'var(--success)' }}>
-                        {formatCurrency(parseFloat(calcVal) / (calcRateType === 'bcv' ? rateBcv : (calcRateType === 'euro' ? rateEuro : rate)), 'USD')}
-                      </div>
-                    </div>
+                          {/* Título */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}>
+                            <span style={{ fontSize: '1.5rem' }}>{icon}</span>
+                            <span style={{ color: 'white', fontWeight: '700', fontSize: '1rem' }}>{label}</span>
+                          </div>
+                          {/* Input USD/EUR/USDT */}
+                          <div style={{ marginBottom: '0.75rem' }}>
+                            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>Monto en {currency}</div>
+                            <div style={{
+                              background: 'rgba(255,255,255,0.07)',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '10px',
+                              padding: '0.6rem 1rem',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            }}>
+                              <input
+                                type="number"
+                                value={calcVal === '0' ? '' : calcVal}
+                                onChange={e => setCalcVal(e.target.value || '0')}
+                                placeholder="0.00"
+                                style={{
+                                  background: 'transparent', border: 'none', outline: 'none',
+                                  color: 'white', fontSize: '1.1rem', fontWeight: '600', width: '100%'
+                                }}
+                              />
+                              <span style={{ color: color, fontWeight: '700', fontSize: '0.85rem' }}>{currency}</span>
+                            </div>
+                          </div>
+                          {/* Resultado VES */}
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>Monto en Bolívares</div>
+                            <div style={{
+                              background: 'rgba(255,255,255,0.07)',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '10px',
+                              padding: '0.6rem 1rem',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            }}>
+                              <span style={{ color: 'white', fontSize: '1.1rem', fontWeight: '600' }}>{amt > 0 ? inVes : '0.00'}</span>
+                              <span style={{ color: color, fontWeight: '700', fontSize: '0.85rem' }}>VES</span>
+                            </div>
+                          </div>
+                          {/* Tasa */}
+                          <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+                            <span>Tasa {rateLabel}</span>
+                            <span style={{ color, fontWeight: '700' }}>{currentRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
+
+                  {/* Botón limpiar */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.25rem' }}>
+                    <button onClick={() => setCalcVal('0')} style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '10px 28px',
+                      background: 'rgba(165,42,42,0.12)',
+                      color: 'var(--danger)',
+                      border: '1px solid var(--danger)',
+                      borderRadius: '20px',
+                      fontSize: '0.85rem',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}>
+                      <Trash2 size={15} /> Limpiar
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1902,11 +2618,18 @@ function App() {
                   <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Copy size={20} /> Nueva Nota Pendiente
                   </h3>
-                  <form onSubmit={(e) => {
+                  <form onSubmit={async (e) => {
                     e.preventDefault();
                     if (!newNote.title || !newNote.text) return;
-                    setNotes([{ id: Date.now().toString(), ...newNote, author: user?.displayName || 'Vendedor', date: new Date().toISOString() }, ...notes]);
-                    setNewNote({ title: '', text: '' });
+                    try {
+                      const noteId = Date.now().toString()
+                      await setDoc(doc(db, 'notes', noteId), {
+                        ...newNote,
+                        author: user?.displayName || user?.email?.split('@')[0] || 'Vendedor',
+                        date: new Date().toISOString()
+                      })
+                      setNewNote({ title: '', text: '' });
+                    } catch (err) { console.error(err) }
                   }}>
                     <div className="input-group">
                       <label>Título</label>
@@ -1937,18 +2660,24 @@ function App() {
 
                 <div className="premium-card">
                   <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <ClipboardList size={20} /> Lista de Pendientes
+                    <ClipboardList size={20} /> Lista de Pendientes ({notes.length})
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {notes.length === 0 ? (
                       <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No hay notas pendientes actuales.</p>
                     ) : (
-                      notes.map(note => (
+                      notes.map((note, index) => (
                         <div key={note.id} style={{ padding: '1.25rem', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <h4 style={{ margin: 0, color: 'var(--accent)', fontSize: '1rem' }}>{note.title}</h4>
+                            <h4 style={{ margin: 0, color: 'var(--accent)', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ background: 'var(--accent)', color: 'white', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>{index + 1}</span>
+                              {note.title}
+                            </h4>
                             <button 
-                              onClick={() => setNotes(notes.filter(n => n.id !== note.id))}
+                              onClick={async () => {
+                                const { deleteDoc } = await import('firebase/firestore')
+                                await deleteDoc(doc(db, 'notes', note.id))
+                              }}
                               style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0.2rem' }}
                             >
                               <Trash2 size={16} />
@@ -1965,8 +2694,114 @@ function App() {
             </motion.div>
           )}
 
+          {activeTab === 'expenses' && (
+            <motion.div key="expenses" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <div className="grid-layout">
+                <div className="premium-card">
+                  <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <DollarSign size={20} /> Registrar Gasto
+                  </h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newExpense.concept || !newExpense.amountUsd) return;
+                    try {
+                      const id = Date.now().toString()
+                      await setDoc(doc(db, 'expenses', id), {
+                        ...newExpense,
+                        date: new Date().toISOString(),
+                        author: user?.displayName || user?.email?.split('@')[0] || 'Vendedor'
+                      })
+                      setNewExpense({ concept: '', amountUsd: '' });
+                    } catch (err) { console.error(err) }
+                  }}>
+                    <div className="input-group">
+                      <label>Concepto del Gasto</label>
+                      <input 
+                        type="text" 
+                        value={newExpense.concept} 
+                        onChange={e => setNewExpense({...newExpense, concept: e.target.value})}
+                        placeholder="Ej. Alquiler Local, Pago de Luz..."
+                        required
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label>Monto (USD)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={newExpense.amountUsd} 
+                        onChange={e => setNewExpense({...newExpense, amountUsd: e.target.value})}
+                        placeholder="0.00"
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
+                      Guardar Gasto
+                    </button>
+                  </form>
+                </div>
+
+                <div className="premium-card">
+                  <h3 style={{ marginBottom: '1.5rem' }}>Historial de Gastos</h3>
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Concepto</th>
+                          <th>Fecha</th>
+                          <th>Monto USD</th>
+                          <th>Monto VES</th>
+                          <th>Registrado por</th>
+                          <th style={{ width: '40px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expenses.length === 0 ? (
+                          <tr><td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No hay gastos registrados</td></tr>
+                        ) : (
+                          expenses.map(expense => (
+                            <tr key={expense.id}>
+                              <td style={{ fontWeight: '500' }}>{expense.concept}</td>
+                              <td style={{ fontSize: '0.85rem' }}>{new Date(expense.date).toLocaleDateString()}</td>
+                              <td style={{ fontWeight: 'bold' }}>{formatCurrency(expense.amountUsd)}</td>
+                              <td style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>{formatCurrency(expense.amountUsd * rateBcv, 'VES')}</td>
+                              <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{expense.author || '-'}</td>
+                              <td>
+                                <button 
+                                  onClick={async () => {
+                                    const { deleteDoc } = await import('firebase/firestore')
+                                    await deleteDoc(doc(db, 'expenses', expense.id))
+                                  }}
+                                  style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer' }}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </main>
+
+      {activeTab !== 'sales' && (
+        <div className="stats-grid" style={{ marginTop: '2rem' }}>
+          <StatCard title="Rentabilidad" value={formatCurrency(stats.profitability)} icon={<BarChart3 size={20} />} color="var(--primary-glow)" />
+          <StatCard title="Gastos" value={formatCurrency(stats.totalExpenses)} icon={<TrendingDown size={20} />} color="var(--danger)" />
+          <StatCard title="Monto por Cobrar" value={formatCurrency(stats.pendingSales)} icon={<CreditCard size={20} />} color="var(--warning)" />
+          <StatCard title="Ventas Totales" value={formatCurrency(stats.totalSales)} icon={<ShoppingCart size={20} />} color="var(--success)" />
+          <StatCard title="Pendientes" value={stats.notesCount} icon={<ClipboardList size={20} />} color="#6366f1" />
+          <StatCard title="Valor Inventario" value={formatCurrency(stats.inventoryValue)} icon={<DollarSign size={20} />} color="var(--primary)" />
+          <StatCard title="Promociones Activas" value={stats.promosCount} icon={<Tag size={20} />} color="#ec4899" />
+        </div>
+      )}
 
       <AnimatePresence>
         {showQrModal && (
@@ -1984,28 +2819,88 @@ function App() {
               style={{ maxWidth: '400px', textAlign: 'center', background: 'white', color: '#333' }}
             >
               <button 
-                onClick={() => setShowQrModal(false)} 
+                onClick={closeModal} 
                 style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#999' }}
               >
                 <X size={24} />
               </button>
-              <h3 style={{ color: '#8E6C45', marginBottom: '1rem' }}>Pago Móvil Mercantil</h3>
-              <div style={{ background: '#f8f8f8', padding: '1rem', borderRadius: '16px', marginBottom: '1.5rem' }}>
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('Pago Movil Mercantil: 04142378679 CI: 24901796')}`} 
-                  alt="QR Pago Movil" 
-                  style={{ width: '200px', height: '200px', marginBottom: '1rem' }}
-                />
-                <div style={{ textAlign: 'left', fontSize: '0.9rem' }}>
-                  <p><strong>Tel:</strong> 04142378679</p>
-                  <p><strong>CI:</strong> 24901796</p>
-                  <p><strong>Banco:</strong> Mercantil</p>
-                  <hr style={{ margin: '0.5rem 0', opacity: 0.1 }} />
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem', textAlign: 'center', color: 'var(--primary-glow)' }}>
-                    Total Cobrar: {formatCurrency(newSale.paymentMethod === 'SHARED' ? newSale.sharedVes : calculateItemTotal(newSale.itemId, newSale.quantity, 'VES', true), 'VES')}
-                    <div style={{ fontSize: '0.7rem', opacity: 0.6, marginTop: '4px' }}>Tasa Aplicada: {(newSale.rateType || 'BCV').toUpperCase()} ({formatCurrency(getActiveRate(), 'VES')})</div>
-                  </div>
+              <h3 style={{ color: '#8E6C45', marginBottom: '1rem' }}>
+                {newSale.paymentMethod === 'BINANCE' ? 'Pago Binance (USDT)' : 'Pago Móvil Banco de Venezuela'}
+              </h3>
+              <div style={{ background: '#f8f8f8', padding: '1.5rem 1rem', borderRadius: '16px', marginBottom: '1rem' }}>
+                {newSale.paymentMethod === 'BINANCE' ? (
+                  <>
+                    <img 
+                      src="https://upload.wikimedia.org/wikipedia/commons/e/e8/Binance_Logo.svg" 
+                      alt="Binance Logo" 
+                      style={{ width: '120px', marginBottom: '1rem' }}
+                    />
+                    <div style={{ background: '#12161c', padding: '1.5rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', color: 'white' }}>
+                       <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('Maria Diaz0124')}`} 
+                        alt="Binance QR" 
+                        style={{ width: '180px', height: '180px', border: '5px solid #f3ba2f', borderRadius: '8px' }}
+                      />
+                      <p style={{ fontWeight: '700', fontSize: '1.1rem', color: '#f3ba2f' }}>Maria Diaz0124</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('Pago Movil BDV: 04129734013 CI: 21346892 Banco: 0102')}`} 
+                      alt="QR Pago Movil" 
+                      style={{ width: '200px', height: '200px', marginBottom: '1rem', borderRadius: '8px' }}
+                    />
+                    <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #eee' }}>
+                        <span><strong>Tel:</strong> 04129734013</span>
+                        <button onClick={() => { navigator.clipboard.writeText('04129734013'); setToast({message:'Teléfono copiado', type:'success'}); setTimeout(()=>setToast(null), 2000); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer' }}><Copy size={14}/></button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #eee' }}>
+                        <span><strong>CI:</strong> V21346892</span>
+                        <button onClick={() => { navigator.clipboard.writeText('21346892'); setToast({message:'Cédula copiada', type:'success'}); setTimeout(()=>setToast(null), 2000); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer' }}><Copy size={14}/></button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #eee' }}>
+                        <span><strong>Banco:</strong> 0102 - BDV</span>
+                        <button onClick={() => { navigator.clipboard.writeText('0102'); setToast({message:'Código banco copiado', type:'success'}); setTimeout(()=>setToast(null), 2000); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer' }}><Copy size={14}/></button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                
+                <hr style={{ margin: '1rem 0', opacity: 0.1 }} />
+                <div style={{ fontWeight: 'bold', fontSize: '1.2rem', textAlign: 'center', color: 'var(--primary-glow)', background: 'rgba(142,108,69,0.05)', padding: '1rem', borderRadius: '12px' }}>
+                  Total Cobrar: {newSale.paymentMethod === 'BINANCE' ? formatCurrency(getGrandTotal()) : formatCurrency(newSale.paymentMethod === 'SHARED' ? newSale.sharedVes : getGrandTotal() * getActiveRate(), 'VES')}
+                  {newSale.paymentMethod !== 'BINANCE' && (
+                    <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '4px', fontWeight: '500' }}>
+                      Tasa Aplicada: {(newSale.rateType || 'BCV').toUpperCase()} ({formatCurrency(getActiveRate(), 'VES')})
+                    </div>
+                  )}
                 </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                {newSale.paymentMethod === 'VES' && (
+                  <a 
+                    href="https://bdvdigital.banvenez.com/pagomovil?id=V21346892&phone=584129734013&bank=0102&description=OuletCaricuao" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="btn"
+                    style={{ flex: 1, textDecoration: 'none', background: '#eb1c24', color: 'white', border: 'none', fontSize: '0.8rem' }}
+                  >
+                    Abrir BDV
+                  </a>
+                )}
+                <button 
+                  onClick={() => {
+                    const text = `Pago Móvil Outlet Caricuao:%0A- Tel: 04129734013%0A- CI: 21346892%0A- Banco: 0102 (Venezuela)%0A- Monto: ${formatCurrency(newSale.paymentMethod === 'SHARED' ? newSale.sharedVes : getGrandTotal() * getActiveRate(), 'VES')}`;
+                    window.open(`https://wa.me/?text=${text}`, '_blank');
+                  }}
+                  className="btn"
+                  style={{ flex: 1, background: '#25D366', color: 'white', border: 'none', fontSize: '0.8rem' }}
+                >
+                  <Share2 size={16} /> Enviar Datos
+                </button>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '1.5rem' }}>Verifique el pago antes de continuar</p>
               <button onClick={registerSale} className="btn btn-primary" style={{ width: '100%' }}>
@@ -2031,7 +2926,7 @@ function App() {
               style={{ maxWidth: '400px', textAlign: 'center', background: 'white', color: '#333' }}
             >
               <button 
-                onClick={() => setShowIgModal(false)} 
+                onClick={closeModal} 
                 style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#999' }}
               >
                 <X size={24} />
@@ -2051,7 +2946,7 @@ function App() {
                 @outlet_caricuao
               </div>
               
-              <button onClick={() => setShowIgModal(false)} className="btn btn-primary" style={{ width: '100%', marginTop: '1rem', background: 'linear-gradient(45deg, #f09433, #bc1888)' }}>
+              <button onClick={closeModal} className="btn btn-primary" style={{ width: '100%', marginTop: '1rem', background: 'linear-gradient(45deg, #f09433, #bc1888)' }}>
                 Cerrar
               </button>
             </motion.div>
@@ -2065,7 +2960,7 @@ function App() {
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }}
-            className="modal-overlay no-print"
+            className="modal-overlay"
           >
             <motion.div 
               initial={{ y: 20, opacity: 0 }} 
@@ -2074,78 +2969,32 @@ function App() {
               className="premium-card modal-content receipt-modal"
               style={{ maxWidth: '450px', padding: '0' }}
             >
-              <div className="receipt-container" id="printable-receipt" style={{ padding: '2rem', background: 'white', color: '#333', borderRadius: '16px' }}>
-                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                  <img src="/logo.jpg" alt="Logo" style={{ width: '80px', borderRadius: '50%', marginBottom: '0.5rem' }} />
-                  <h2 style={{ color: '#8E6C45', margin: '0' }}>OUTLET CARICUAO</h2>
-                  <p style={{ margin: '0', fontSize: '0.9rem' }}>Inversiones Caricuao F.P.</p>
-                  <p style={{ fontSize: '0.75rem', opacity: 0.7, margin: '0' }}>RIF: V-24901796-0</p>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem', fontWeight: 'bold' }}>
-                  <span>RECIBO DE PAGO</span>
-                  <span>#{selectedReceipt.id.slice(-6)}</span>
+               <div className="receipt-container" id="printable-receipt" style={{ padding: '2rem', background: 'white', color: '#000', borderRadius: '16px', fontFamily: "'Courier New', Courier, monospace" }}>
+                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                  <h2 style={{ margin: '0', fontSize: '1.2rem' }}>Recibo de Pago - Outlet Caricuao</h2>
+                  <div style={{ margin: '0.5rem 0' }}>----------------------------------</div>
                 </div>
                 
-                <div className="grid-2-cols" style={{ gap: '0.75rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Cliente:</label>
-                    <strong>{selectedReceipt.customerName}</strong>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>ID/Cédula:</label>
-                    <strong>{selectedReceipt.customerID || 'N/A'}</strong>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Fecha:</label>
-                    <strong>{new Date(selectedReceipt.date).toLocaleDateString()}</strong>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', color: '#888' }}>Teléfono:</label>
-                    <strong>{selectedReceipt.customerPhone || 'N/A'}</strong>
-                  </div>
+                <div style={{ lineHeight: '1.6', fontSize: '0.95rem' }}>
+                  <div><strong>Cliente:</strong> {selectedReceipt.customerName}</div>
+                  <div><strong>Cédula:</strong> {selectedReceipt.customerID || ''}</div>
+                  <div><strong>Fecha:</strong> {new Date(selectedReceipt.date).toLocaleDateString()}</div>
+                  <div style={{ margin: '0.5rem 0' }}>----------------------------------</div>
+                  <div><strong>Articulo:</strong> {selectedReceipt.itemName}</div>
+                  <div><strong>Cantidad:</strong> {selectedReceipt.quantity}</div>
+                  <div><strong>Total USD:</strong> {formatCurrency(selectedReceipt.totalUsd)}</div>
+                  <div><strong>Total VES:</strong> {formatCurrency(selectedReceipt.totalVes, 'VES')}</div>
+                  <div><strong>Tasa:</strong> {formatCurrency(selectedReceipt.rate, 'VES')} ({selectedReceipt.rateType?.toUpperCase()})</div>
+                  <div><strong>Metodo:</strong> {selectedReceipt.paymentMethod}</div>
+                  <div style={{ margin: '0.5rem 0' }}>----------------------------------</div>
                 </div>
 
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem', fontSize: '0.85rem' }}>
-                  <thead style={{ borderBottom: '1px solid #eee' }}>
-                    <tr style={{ textAlign: 'left' }}>
-                      <th style={{ padding: '0.5rem 0' }}>Descripción</th>
-                      <th>Cant.</th>
-                      <th style={{ textAlign: 'right' }}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ padding: '0.5rem 0' }}>{selectedReceipt.itemName}</td>
-                      <td>{selectedReceipt.quantity}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(selectedReceipt.totalUsd)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div style={{ borderTop: '1px dashed #ccc', paddingTop: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                    <span>Total USD</span>
-                    <strong>{formatCurrency(selectedReceipt.totalUsd)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8E6C45' }}>
-                    <span>Total Bs.</span>
-                    <strong>{formatCurrency(selectedReceipt.totalVes, 'VES')}</strong>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.5rem' }}>
-                    Tasa: {formatCurrency(selectedReceipt.rate, 'VES')} ({selectedReceipt.rateType?.toUpperCase()})
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#666' }}>
-                    Método de Pago: {selectedReceipt.paymentMethod}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
-                    Atendido por: {selectedReceipt.sellerName || 'Caja Central'}
-                  </div>
+                <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                  <div>¡Gracias por tu compra! 👗</div>
+                  <div style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Atendido por: {selectedReceipt.sellerName || 'Personal Autorizado'}</div>
                 </div>
-
-                <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '0.8rem', color: '#888' }}>
-                  <p>¡Gracias por tu compra!</p>
-                  <p style={{ fontSize: '0.65rem' }}>No se aceptan cambios ni devoluciones sin el recibo correspondiente.</p>
+                <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.65rem', color: '#aaa', borderTop: '1px dashed #ddd', paddingTop: '0.75rem' }}>
+                  © Creativeweb IA 2026 - Todos los Derechos Reservados - ContactoCreativeweb@gmail.com
                 </div>
               </div>
 
@@ -2161,13 +3010,13 @@ function App() {
                   <Share2 size={18} /> WhatsApp
                 </button>
                 <button 
-                  onClick={() => { setShowReceiptModal(false); setShowDeliveryModal(true) }} 
+                  onClick={() => openModal('delivery', selectedReceipt)} 
                   className="btn btn-primary"
                   style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--accent)', border: 'none' }}
                 >
                   <Truck size={18} /> Nota de Entrega
                 </button>
-                <button onClick={() => setShowReceiptModal(false)} className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.75rem' }}>
+                <button onClick={closeModal} className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.75rem' }}>
                   <X size={18} />
                 </button>
               </div>
@@ -2191,142 +3040,43 @@ function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="modal-overlay no-print"
+              className="modal-overlay"
             >
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 30, opacity: 0 }}
-                style={{ width: '100%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}
+                className="delivery-modal premium-card"
+                style={{ width: '100%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', boxShadow: '0 25px 60px rgba(0,0,0,0.4)', background: 'white' }}
                 id="delivery-note-root"
               >
                 {/* ─── Printable area ─── */}
-                <div id="printable-delivery" style={{ background: 'white', color: '#333', padding: '2rem 2.5rem', fontFamily: "'Outfit', sans-serif" }}>
-
-                  {/* Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', borderBottom: '3px solid #8E6C45', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
-                    <img src="/logo.jpg" alt="Logo" style={{ width: '68px', height: '68px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #C2A888', flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8E6C45', letterSpacing: '-0.02em' }}>OUTLET CARICUAO</div>
-                      {/* Instagram QR */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '4px' }}>
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://www.instagram.com/outlet_caricuao?igsh=ZjB6OWgydTFiNWxk')}`}
-                          alt="IG QR"
-                          style={{ width: '46px', height: '46px', borderRadius: '4px' }}
-                        />
-                        <span style={{ fontSize: '0.72rem', color: '#aaa' }}>@outlet_caricuao</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#4A3728', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nota de Entrega</div>
-                      <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '4px' }}>#{notaNum}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#999' }}>{new Date(s.date).toLocaleDateString()}</div>
-                    </div>
+                <div id="printable-delivery" style={{ padding: '2rem', background: 'white', color: '#000', borderRadius: '16px', fontFamily: "'Courier New', Courier, monospace" }}>
+                  <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                    <h2 style={{ margin: '0', fontSize: '1.2rem' }}>Recibo de Pago - Outlet Caricuao</h2>
+                    <div style={{ margin: '0.5rem 0' }}>----------------------------------</div>
+                  </div>
+                  
+                  <div style={{ lineHeight: '1.6', fontSize: '0.95rem' }}>
+                    <div><strong>Cliente:</strong> {s.customerName}</div>
+                    <div><strong>Cédula:</strong> {s.customerID || ''}</div>
+                    <div><strong>Fecha:</strong> {new Date(s.date).toLocaleDateString()}</div>
+                    <div style={{ margin: '0.5rem 0' }}>----------------------------------</div>
+                    <div><strong>Articulo:</strong> {s.itemName}</div>
+                    <div><strong>Cantidad:</strong> {s.quantity}</div>
+                    <div><strong>Total USD:</strong> {formatCurrency(s.totalUsd)}</div>
+                    <div><strong>Total VES:</strong> {formatCurrency(s.totalVes, 'VES')}</div>
+                    <div><strong>Tasa:</strong> {formatCurrency(s.rate, 'VES')} ({s.rateType?.toUpperCase()})</div>
+                    <div><strong>Metodo:</strong> {s.paymentMethod}</div>
+                    <div style={{ margin: '0.5rem 0' }}>----------------------------------</div>
                   </div>
 
-                  {/* Customer info grid */}
-                  <div className="grid-2-cols" style={{ border: '1px solid #f0e8df', borderRadius: '10px', overflow: 'hidden', marginBottom: '1.25rem', gap: 0 }}>
-                    {[
-                      ['Cliente', s.customerName],
-                      ['Cédula', s.customerID || 'N/A'],
-                      ['Teléfono', s.customerPhone || 'N/A'],
-                      ['Email', s.customerEmail || 'N/A'],
-                    ].map(([label, val], i) => (
-                      <div key={i} style={{ padding: '0.55rem 1rem', borderBottom: '1px solid #f8f0ea', borderRight: i % 2 === 0 ? '1px solid #f8f0ea' : 'none', display: 'flex', gap: '0.5rem', alignItems: 'center', background: i % 4 < 2 ? '#fdfaf7' : 'white' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: '68px' }}>{label}</span>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#4A3728' }}>{val}</span>
-                      </div>
-                    ))}
+                  <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                    <div>¡Gracias por tu compra! 👗</div>
+                    <div style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Atendido por: {s.sellerName || 'Personal Autorizado'}</div>
                   </div>
-
-                  {/* Payment detail box */}
-                  <div style={{ background: '#fdf9f5', border: '1px solid #e8ddd4', borderRadius: '10px', padding: '0.85rem 1rem', marginBottom: '1.25rem' }}>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.6rem' }}>Detalle de Pago</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', textAlign: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Total USD</div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#4A3728' }}>{formatCurrency(s.totalUsd)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Total Bs.</div>
-                        <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#8E6C45' }}>{formatCurrency(s.totalVes, 'VES')}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Tasa {s.rateType?.toUpperCase()}</div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#666' }}>{formatCurrency(s.rate, 'VES')}</div>
-                      </div>
-                    </div>
-
-                    {/* Shared payment breakdown */}
-                    {isShared && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', textAlign: 'center', borderTop: '1px dashed #e0d0c0', marginTop: '0.6rem', paddingTop: '0.6rem' }}>
-                        <div>
-                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Pagado en $</div>
-                          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#4A3728' }}>{formatCurrency(s.sharedUsd)}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Pagado en Bs.</div>
-                          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#8E6C45' }}>{formatCurrency(s.sharedVes, 'VES')}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase' }}>Bs. → USD</div>
-                          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#666' }}>{formatCurrency(s.sharedVes / s.rate)}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Installments */}
-                    {isPending && (
-                      <div style={{ borderTop: '1px dashed #e0d0c0', marginTop: '0.6rem', paddingTop: '0.6rem', fontSize: '0.8rem', color: '#b8740a', fontWeight: 600, textAlign: 'center' }}>
-                        ⏳ Pago por Partes · Abono: {formatCurrency(s.downPayment)} · Resta: {formatCurrency(cuotaRestante)} en {Math.max(s.installments - s.paidInstallments, 1)} cuota(s) de {formatCurrency(cuotaValor)}
-                      </div>
-                    )}
-
-                    <div style={{ borderTop: '1px dashed #e0d0c0', marginTop: '0.6rem', paddingTop: '0.5rem', fontSize: '0.75rem', color: '#aaa', textAlign: 'center' }}>
-                      <strong style={{ color: '#8E6C45' }}>Método: </strong>
-                      {s.paymentMethod === 'USD' ? 'Dólares en Efectivo' : s.paymentMethod === 'VES' ? 'Bolívares (Pago Móvil / Transferencia)' : s.paymentMethod === 'SHARED' ? 'Pago Compartido ($ + Bs.)' : s.paymentMethod}
-                      {' · '}
-                      <strong style={{ color: s.status === 'paid' ? '#6B8E23' : '#b8740a' }}>
-                        {s.status === 'paid' ? '✔ Cancelado' : '⏳ Pendiente'}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* Items table */}
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#8E6C45', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.4rem' }}>Artículos Entregados</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.25rem' }}>
-                    <thead>
-                      <tr style={{ background: '#8E6C45' }}>
-                        {['Descripción', 'Cant.', 'Precio Unit.', 'Total USD'].map(h => (
-                          <th key={h} style={{ padding: '0.5rem 0.8rem', fontSize: '0.7rem', fontWeight: 700, color: 'white', textTransform: 'uppercase', textAlign: h === 'Total USD' ? 'right' : 'left' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem', color: '#4A3728' }}>{s.itemName}</td>
-                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem' }}>{s.quantity}</td>
-                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem' }}>{formatCurrency(s.priceUsd)}</td>
-                        <td style={{ padding: '0.55rem 0.8rem', borderBottom: '1px solid #f0e8df', fontSize: '0.88rem', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(s.totalUsd)}</td>
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={3} style={{ textAlign: 'right', paddingTop: '0.6rem', paddingRight: '0.8rem', fontSize: '0.88rem', fontWeight: 700, color: '#4A3728', borderTop: '2px dashed #e0d0c0' }}>Total USD:</td>
-                        <td style={{ textAlign: 'right', paddingTop: '0.6rem', fontSize: '0.95rem', fontWeight: 800, color: '#4A3728', borderTop: '2px dashed #e0d0c0' }}>{formatCurrency(s.totalUsd)}</td>
-                      </tr>
-                      <tr>
-                        <td colSpan={3} style={{ textAlign: 'right', paddingRight: '0.8rem', fontSize: '0.85rem', fontWeight: 700, color: '#8E6C45' }}>Total Bs.:</td>
-                        <td style={{ textAlign: 'right', fontSize: '0.9rem', fontWeight: 800, color: '#8E6C45' }}>{formatCurrency(s.totalVes, 'VES')}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-
-                  {/* Footer */}
-                  <div style={{ borderTop: '1px dashed #e0d0c0', paddingTop: '0.65rem', textAlign: 'center', fontSize: '0.7rem', color: '#bbb' }}>
-                    <div style={{ marginBottom: '0.2rem', color: '#888' }}>Atendido por: {s.sellerName || 'Caja Central'}</div>
-                    <strong style={{ color: '#8E6C45' }}>Outlet Caricuao</strong> · Este documento certifica la entrega. · No se aceptan cambios sin este comprobante.
+                  <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.65rem', color: '#aaa', borderTop: '1px dashed #ddd', paddingTop: '0.75rem' }}>
+                    © Creativeweb IA 2026 - Todos los Derechos Reservados - Contactocreativeweb@gmail.com
                   </div>
                 </div>
 
@@ -2347,7 +3097,7 @@ function App() {
                     <Share2 size={18} /> WhatsApp
                   </button>
                   <button
-                    onClick={() => setShowDeliveryModal(false)}
+                    onClick={closeModal}
                     className="btn-secondary"
                     style={{ flex: '0 0 auto', padding: '0.75rem' }}
                   >
@@ -2360,6 +3110,37 @@ function App() {
         })()}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            style={{
+              position: 'fixed',
+              bottom: '2rem',
+              left: '50%',
+              zIndex: 10000,
+              padding: '1rem 2rem',
+              borderRadius: '16px',
+              background: toast.type === 'success' ? 'var(--success)' : (toast.type === 'warning' ? 'var(--warning)' : 'var(--accent)'),
+              color: 'white',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+              fontWeight: '600',
+              textAlign: 'center',
+              minWidth: '280px',
+              pointerEvents: 'none'
+            }}
+          >
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <footer style={{ marginTop: '3rem', padding: '2rem 1rem', textAlign: 'center', opacity: 0.4, fontSize: '0.7rem' }} className="no-print">
+        <div>Outlet Caricuao PWA v4.1.3 - Sincronizada con BCV Oficial</div>
+        <div style={{ marginTop: '0.5rem', fontWeight: '600' }}>© Creativeweb IA 2026 - Todos los Derechos Reservados - Contactocreativeweb@gmail.com</div>
+      </footer>
     </div>
   )
 }
